@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Form, Link, NavLink, useSearchParams, useSubmit } from "react-router";
 import type { SessionUser } from "~/lib/auth.server";
+import { iconUrl } from "~/lib/brand";
 import { AuthLink } from "./auth-dialog";
 import { cn } from "~/lib/utils";
 import { Button } from "./ui/button";
@@ -34,9 +35,7 @@ type Category = { id: string; name: string; slug: string; kind: "product" | "ser
 export function Logo({ className }: { className?: string }) {
   return (
     <Link to="/" className={cn("flex shrink-0 items-center gap-1.5", className)}>
-      <span className="brand-gradient flex size-9 items-center justify-center rounded-xl text-lg font-black text-white shadow-md shadow-primary/30">
-        M
-      </span>
+      <img src={iconUrl("icon.svg")} alt="" width={36} height={36} className="size-9 rounded-xl shadow-md shadow-primary/30" />
       <span className="text-xl font-black tracking-tight">
         My<span className="text-primary">Plug</span>
       </span>

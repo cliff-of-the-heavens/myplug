@@ -14,3 +14,8 @@ node_modules
 vite.demo.config.ts
 .env.*
 !.env.example
+
+# Archives (e.g. icon packs) are unpacked into the project, not committed
+*.zip
+*.7z
+*.rar

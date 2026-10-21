@@ -18,6 +18,7 @@ import { Button } from "./components/ui/button";
 import { getUser } from "./lib/auth.server";
 import { getCategories } from "./lib/catalog.server";
 import { unreadCount } from "./lib/messaging.server";
+import { ICON_VERSION, iconUrl } from "./lib/brand";
 import { unreadNotifications } from "./lib/notify.server";
 import { TERMS_VERSION } from "./lib/terms";
 import { TermsGate } from "./components/terms-gate";
@@ -29,9 +30,9 @@ export const links: Route.LinksFunction = () => [
     rel: "stylesheet",
     href: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
   },
-  { rel: "manifest", href: "/manifest.webmanifest" },
-  { rel: "icon", href: "/icons/icon.svg", type: "image/svg+xml" },
-  { rel: "apple-touch-icon", href: "/icons/apple-touch-icon.png" },
+  { rel: "manifest", href: `/manifest.webmanifest?v=${ICON_VERSION}` },
+  { rel: "icon", href: iconUrl("icon.svg"), type: "image/svg+xml" },
+  { rel: "apple-touch-icon", href: iconUrl("apple-touch-icon.png") },
 ];
 
 export const meta: Route.MetaFunction = () => [

@@ -1,11 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f2643a"/>
-      <stop offset=".45" stop-color="#ec486e"/>
-      <stop offset="1" stop-color="#8f4ce6"/>
-    </linearGradient>
-  </defs>
-  <rect width="64" height="64" rx="14" fill="url(#g)"/>
-  <path fill="#fff" d="M17.3 44.8V19.2h6.7l8 11.5 8-11.5h6.7v25.6h-6.1V29.4L32 41l-8.6-11.6v15.4z"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8b22"/><stop offset=".42" stop-color="#ff326f"/><stop offset=".72" stop-color="#d52db5"/><stop offset="1" stop-color="#8140f4"/></linearGradient>
+ <linearGradient id="ribbon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe1a2"/><stop offset=".5" stop-color="#ff9ac0"/><stop offset="1" stop-color="#dc6dff"/></linearGradient>
+ <linearGradient id="bolt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8b22"/><stop offset=".55" stop-color="#ff4b55"/><stop offset="1" stop-color="#f31988"/></linearGradient>
+ <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="5"/></filter>
+</defs>
+<rect width="512" height="512" rx="112" fill="url(#bg)"/>
+<!-- flowing energy crescent -->
+<path d="M337 92 C220 72 112 151 92 253 C73 351 137 422 224 425 C299 428 368 384 399 322 C381 385 321 438 245 445 C137 455 57 382 63 278 C69 170 170 81 286 80 C306 80 323 84 337 92Z" fill="url(#ribbon)" opacity=".95"/>
+<path d="M337 92 C220 72 112 151 92 253 C73 351 137 422 224 425 C299 428 368 384 399 322 C381 385 321 438 245 445 C137 455 57 382 63 278 C69 170 170 81 286 80 C306 80 323 84 337 92Z" fill="#fff" opacity=".12" transform="translate(0 9)"/>
+<!-- plug body and prongs -->
+<g transform="rotate(14 270 265)">
+ <rect x="225" y="112" width="31" height="93" rx="15.5" fill="#fff"/>
+ <rect x="293" y="119" width="31" height="86" rx="15.5" fill="#fff"/>
+ <path d="M199 191 Q199 174 216 174 H326 Q344 174 344 193 V294 Q344 349 294 367 L282 371 Q273 375 269 387 L260 408 Q254 422 239 415 L214 402 Q203 396 205 382 L207 367 Q165 347 165 302 V208 Q165 191 182 191Z" fill="#fff"/>
+ <path d="M270 218 L225 282 L258 286 L239 342 L300 269 L265 264 Z" fill="url(#bolt)"/>
+</g>
 </svg>

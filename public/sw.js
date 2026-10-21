@@ -2,12 +2,12 @@
 // - Hashed build assets (/assets/*) and icons: cache-first (they never change).
 // - Page navigations: network-first, falling back to /offline.html.
 // - Everything else (data requests, form posts, uploads): straight to the network.
-const VERSION = "myplug-v1";
+const VERSION = "myplug-v2"; // bump to refresh cached icons/assets on installed apps
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(VERSION).then((cache) => cache.addAll([OFFLINE_URL, "/icons/icon-192.png", "/manifest.webmanifest"])),
+    caches.open(VERSION).then((cache) => cache.addAll([OFFLINE_URL, "/icons/icon-192.png?v=2", "/manifest.webmanifest"])),
   );
   self.skipWaiting();
 });
