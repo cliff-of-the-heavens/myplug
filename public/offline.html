@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f2643a" />
+    <title>You're offline · MyPlug</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        margin: 0; min-height: 100dvh; display: grid; place-items: center; text-align: center;
+        font-family: system-ui, sans-serif; padding: 24px;
+        background: #fffaf3; color: #2a2238;
+      }
+      @media (prefers-color-scheme: dark) { body { background: #1b1726; color: #f5f0ea; } }
+      .logo {
+        width: 72px; height: 72px; border-radius: 20px; margin: 0 auto 20px;
+        background: linear-gradient(120deg, #f2643a, #ec486e 45%, #8f4ce6);
+        color: #fff; font: 900 36px/72px system-ui, sans-serif;
+      }
+      button {
+        margin-top: 20px; border: 0; border-radius: 999px; padding: 12px 24px; cursor: pointer;
+        background: #f2643a; color: #fff; font-weight: 700; font-size: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="logo">M</div>
+      <h1>You're offline</h1>
+      <p>Check your connection and try again.</p>
+      <button onclick="location.reload()">Retry</button>
+    </main>
+  </body>
+</html>

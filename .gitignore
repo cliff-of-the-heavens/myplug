@@ -1,0 +1,16 @@
+node_modules
+.env
+/build
+/.react-router
+/.vercel
+/public/uploads
+.idea
+.DS_Store
+
+# Private uploads in local development (ID photos, licences, paid media)
+.private-uploads/
+
+# Temporary demo-mode config (points at files outside the project)
+vite.demo.config.ts
+.env.*
+!.env.example
