@@ -15,7 +15,7 @@ import {
   StoreIcon,
   UserIcon,
 } from "lucide-react";
-import { Form, Link, NavLink, useSearchParams } from "react-router";
+import { Form, Link, NavLink, useSearchParams, useSubmit } from "react-router";
 import type { SessionUser } from "~/lib/auth.server";
 import { AuthLink } from "./auth-dialog";
 import { cn } from "~/lib/utils";
@@ -82,7 +82,15 @@ function SearchBar({ categories, className }: { categories: Category[]; classNam
   );
 }
 
+const ACCOUNT_TYPE: Record<SessionUser["role"], string> = {
+  customer: "Customer account",
+  merchant: "Merchant account",
+  courier: "Courier account",
+  admin: "Administrator",
+};
+
 function AccountMenu({ user }: { user: SessionUser }) {
+  const submit = useSubmit();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -94,8 +102,9 @@ function AccountMenu({ user }: { user: SessionUser }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>
-          Signed in as <span className="font-semibold text-foreground">{user.email}</span>
+        <DropdownMenuLabel className="grid gap-0.5">
+          <span className="max-w-60 truncate text-sm font-semibold text-foreground">{user.email}</span>
+          <span className="text-xs font-normal text-muted-foreground">{ACCOUNT_TYPE[user.role]}</span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {user.role === "courier" ? (
@@ -166,13 +175,10 @@ function AccountMenu({ user }: { user: SessionUser }) {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <Form method="post" action="/logout">
-          <DropdownMenuItem asChild>
-            <button type="submit" className="w-full">
-              <LogOutIcon /> Sign out
-            </button>
-          </DropdownMenuItem>
-        </Form>
+        {/* Submitted from onSelect: a <form> inside the menu is removed as the menu closes, before it can submit. */}
+        <DropdownMenuItem onSelect={() => submit(null, { method: "post", action: "/logout" })}>
+          <LogOutIcon /> Sign out
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
