@@ -4,6 +4,8 @@ import { db, schema } from "~/db/client.server";
 import type { OrderStatus, PaymentTiming } from "~/db/schema";
 import { addDays, isDateStr, today, type DateStr } from "./dates";
 import { BILL_TERMS_DAYS, PREPAY_DAYS } from "./orders";
+import { CouponError, refundCouponsForOrder, spendCouponTx } from "./coupons.server";
+import { applyPromoCode, countPromoUse, PromoError, salePercents, salePrice } from "./pricing.server";
 
 const { products, stores, orders, orderItems, orderEvents, deliveries, bills, digitalOffers, digitalGrants } = schema;
 
@@ -70,8 +72,11 @@ export async function bookedCounts(productId: string, from: DateStr, to: DateStr
 
 type NewOrder = {
   customerId: string;
-  productId: string;
-  quantity: number;
+  /** One product... */
+  productId?: string;
+  quantity?: number;
+  /** ...or several (a cart checkout). All lines must be products from the same store. */
+  items?: { productId: string; quantity: number }[];
   shippingAddress: string;
   notes?: string;
   paymentTiming?: PaymentTiming;
@@ -82,21 +87,38 @@ type NewOrder = {
   paidFromCredit?: string;
   /** Digital products: the price option bought. */
   offerId?: string;
+  /** The store's promo code, and/or a gift coupon to pay with (cart checkout). */
+  promoCode?: string;
+  couponCode?: string;
   /** Creates the delivery record (method, courier invitations...). Defaults to a plain one. */
   createDelivery?: (tx: Tx, orderId: string) => Promise<unknown>;
 };
 
-/** Creates an order with its item, timeline event, delivery and bill, inside an existing transaction. */
+/**
+ * Creates an order with its items, timeline event, delivery and bill, inside an existing transaction.
+ * Prices are worked out here, on the server: live sales, then the promo code, then any gift coupon
+ * pays part (or all) of what's left.
+ */
 export async function createOrderTx(tx: Tx, input: NewOrder) {
-  if (!Number.isInteger(input.quantity) || input.quantity < 1) {
-    throw new OrderError("Quantity must be at least 1.");
+  const requested = input.items ?? [{ productId: input.productId ?? "", quantity: input.quantity ?? 0 }];
+  if (!requested.length) throw new OrderError("Your cart is empty.");
+  for (const r of requested) {
+    if (!Number.isInteger(r.quantity) || r.quantity < 1) throw new OrderError("Quantity must be at least 1.");
   }
-  // Lock the product row so two simultaneous orders can't oversell the last unit (or the last booking slot).
-  const [product] = await tx.select().from(products).where(eq(products.id, input.productId)).for("update");
-  if (!product || !product.isActive) throw new OrderError("This listing is no longer available.");
+  // Lock the product rows (in a fixed order, so two orders can't deadlock) so nobody oversells
+  // the last unit or the last booking slot.
+  const ids = [...new Set(requested.map((r) => r.productId))].sort();
+  const locked = await tx.select().from(products).where(inArray(products.id, ids)).orderBy(products.id).for("update");
+  if (locked.length !== ids.length || locked.some((p) => !p.isActive)) throw new OrderError("This listing is no longer available.");
+  const storeIds = new Set(locked.map((p) => p.storeId));
+  if (storeIds.size !== 1) throw new OrderError("Each order is with one store.");
+  const product = locked[0];
+  const storeId = product.storeId;
 
   const isService = product.kind === "service";
   const isDigital = product.kind === "digital";
+  if ((isService || isDigital) && requested.length > 1) throw new OrderError("Book services and buy downloads one at a time.");
+  if (requested.length > 1 && locked.some((p) => p.kind !== "product")) throw new OrderError("Only products can be ordered together.");
   const offer = isDigital
     ? (await tx.select().from(digitalOffers).where(and(eq(digitalOffers.id, input.offerId ?? ""), eq(digitalOffers.productId, product.id))))[0]
     : null;
@@ -107,23 +129,47 @@ export async function createOrderTx(tx: Tx, input: NewOrder) {
     if (input.bookingDate > addDays(today(), 365)) throw new OrderError("Bookings can be made up to a year ahead.");
     const booked = (await bookedCounts(product.id, input.bookingDate, input.bookingDate, tx)).get(input.bookingDate) ?? 0;
     if (booked >= (product.dailyCapacity ?? 1)) throw new OrderError("That date is fully booked. Please choose another day.");
-  } else if (product.trackStock && product.quantity < input.quantity) {
-    throw new OrderError(
-      product.quantity === 0 ? "This product is out of stock." : `Only ${product.quantity} left in stock.`,
-    );
   }
 
-  if (product.trackStock && product.kind === "product") {
-    await tx
-      .update(products)
-      .set({ quantity: sql`${products.quantity} - ${input.quantity}` })
-      .where(eq(products.id, product.id));
+  // Live sales (timed deals, store-wide or per-item discounts) set the unit prices.
+  const pct = await salePercents(tx, locked.map((p) => ({ productId: p.id, storeId: p.storeId })));
+  const lines = requested.map((r) => {
+    const p = locked.find((x) => x.id === r.productId)!;
+    const quantity = isService || isDigital ? 1 : r.quantity;
+    if (p.kind === "product" && p.trackStock && p.quantity < quantity) {
+      throw new OrderError(p.quantity === 0 ? `${p.title} is out of stock.` : `Only ${p.quantity} of ${p.title} left in stock.`);
+    }
+    const unitPrice = offer ? offer.priceCents : salePrice(p.priceCents, pct.get(p.id));
+    return { p, quantity, unitPrice, totalCents: unitPrice * quantity };
+  });
+  for (const l of lines) {
+    if (l.p.trackStock && l.p.kind === "product") {
+      await tx.update(products).set({ quantity: sql`${products.quantity} - ${l.quantity}` }).where(eq(products.id, l.p.id));
+    }
   }
 
-  const quantity = isService || isDigital ? 1 : input.quantity;
-  const [store] = await tx.select({ currency: stores.currency }).from(stores).where(eq(stores.id, product.storeId));
-  const unitPrice = offer ? offer.priceCents : product.priceCents;
-  const total = unitPrice * quantity;
+  const subtotal = lines.reduce((s, l) => s + l.totalCents, 0);
+  let discount = 0;
+  let promo: Awaited<ReturnType<typeof applyPromoCode>> | null = null;
+  if (input.promoCode?.trim()) {
+    try {
+      promo = await applyPromoCode(tx, {
+        storeId,
+        code: input.promoCode,
+        customerId: input.customerId,
+        lines: lines.map((l) => ({ productId: l.p.id, totalCents: l.totalCents })),
+        lock: true,
+      });
+    } catch (e) {
+      if (e instanceof PromoError) throw new OrderError(e.message);
+      throw e;
+    }
+    discount = promo.discountCents;
+    await countPromoUse(tx, promo.deal.id);
+  }
+  const total = subtotal - discount;
+
+  const [store] = await tx.select({ currency: stores.currency }).from(stores).where(eq(stores.id, storeId));
   // Digital goods are always paid first: access starts once the seller confirms payment.
   const timing = isDigital ? "prepaid" : (input.paymentTiming ?? "on_delivery");
   const [order] = await tx
@@ -131,8 +177,11 @@ export async function createOrderTx(tx: Tx, input: NewOrder) {
     .values({
       number: referenceNumber("MP"),
       customerId: input.customerId,
-      storeId: product.storeId,
+      storeId,
       totalCents: total,
+      subtotalCents: subtotal,
+      discountCents: discount,
+      promoCode: promo?.code ?? null,
       currency: store.currency,
       shippingAddress: input.shippingAddress,
       notes: input.notes || null,
@@ -142,13 +191,15 @@ export async function createOrderTx(tx: Tx, input: NewOrder) {
     })
     .returning();
 
-  await tx.insert(orderItems).values({
-    orderId: order.id,
-    productId: product.id,
-    title: offer ? `${product.title} (${offer.label})` : product.title,
-    unitPriceCents: unitPrice,
-    quantity,
-  });
+  await tx.insert(orderItems).values(
+    lines.map((l) => ({
+      orderId: order.id,
+      productId: l.p.id,
+      title: offer ? `${l.p.title} (${offer.label})` : l.p.title,
+      unitPriceCents: l.unitPrice,
+      quantity: l.quantity,
+    })),
+  );
   if (offer) {
     await tx.insert(digitalGrants).values({
       userId: input.customerId,
@@ -169,6 +220,21 @@ export async function createOrderTx(tx: Tx, input: NewOrder) {
   if (input.createDelivery) await input.createDelivery(tx, order.id);
   else if (!isDigital) await tx.insert(deliveries).values({ orderId: order.id }); // nothing to deliver for downloads
 
+  // A gift coupon pays part (or all) of the bill straight away.
+  let couponUsed = 0;
+  let couponCode: string | null = null;
+  if (input.couponCode?.trim()) {
+    try {
+      const spent = await spendCouponTx(tx, { code: input.couponCode, storeId, orderId: order.id, dueCents: total });
+      couponUsed = spent.used;
+      couponCode = spent.coupon.code;
+    } catch (e) {
+      if (e instanceof CouponError) throw new OrderError(e.message);
+      throw e;
+    }
+    if (couponUsed) await tx.update(orders).set({ couponCents: couponUsed }).where(eq(orders.id, order.id));
+  }
+
   // Prepaid: due within PREPAY_DAYS (the merchant won't dispatch until it's paid). Otherwise due a few
   // days after delivery; that date is provisional and is reset when the order is actually delivered.
   const serviceDay = input.bookingDate ? new Date(`${input.bookingDate}T12:00:00Z`) : new Date();
@@ -176,14 +242,16 @@ export async function createOrderTx(tx: Tx, input: NewOrder) {
     timing === "prepaid"
       ? new Date(Date.now() + PREPAY_DAYS * 86_400_000)
       : new Date(serviceDay.getTime() + BILL_TERMS_DAYS * 86_400_000);
+  const due = total - couponUsed;
+  const paidBy = input.paidFromCredit ?? (due <= 0 && couponCode ? `Gift coupon ${couponCode}` : null);
   await tx.insert(bills).values({
     orderId: order.id,
-    amountCents: total,
+    amountCents: due,
     dueAt,
-    ...(input.paidFromCredit ? { status: "paid" as const, paidAt: new Date(), paymentReference: input.paidFromCredit } : {}),
+    ...(paidBy ? { status: "paid" as const, paidAt: new Date(), paymentReference: paidBy } : {}),
   });
 
-  return { order, product };
+  return { order: { ...order, couponCents: couponUsed }, product };
 }
 
 export function placeOrder(input: NewOrder) {
@@ -289,13 +357,15 @@ export async function updateOrderStatus(input: {
         .where(and(eq(bills.orderId, order.id), eq(bills.status, "unpaid")));
     } else if (input.status === "cancelled") {
       // Return stock and void the bill (a paid bill is left as is, for the merchant to refund).
-      if (item?.productId) {
+      for (const line of await tx.select().from(orderItems).where(eq(orderItems.orderId, order.id))) {
+        if (!line.productId) continue;
         await tx
           .update(products)
-          .set({ quantity: sql`${products.quantity} + ${item.quantity}` })
-          .where(and(eq(products.id, item.productId), eq(products.trackStock, true), eq(products.kind, "product")));
+          .set({ quantity: sql`${products.quantity} + ${line.quantity}` })
+          .where(and(eq(products.id, line.productId), eq(products.trackStock, true), eq(products.kind, "product")));
       }
       await tx.update(bills).set({ status: "void" }).where(and(eq(bills.orderId, order.id), ne(bills.status, "paid")));
+      await refundCouponsForOrder(tx, order.id); // money taken from a gift coupon goes back on it
     }
   });
 }

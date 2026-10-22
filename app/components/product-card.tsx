@@ -3,16 +3,16 @@ import { Link } from "react-router";
 import type { ProductCardData } from "~/lib/catalog.server";
 import { money, stockLabel } from "~/lib/format";
 import { cn } from "~/lib/utils";
+import { DealCountdown, priceDisplay } from "./price";
 import { SafeImage } from "./safe-image";
+import { FavouriteButton } from "./shopping";
 import { Badge } from "./ui/badge";
 
 export function ProductCard({ product, className }: { product: ProductCardData; className?: string }) {
   const isService = product.kind === "service";
   const stock = stockLabel(product.quantity, product.trackStock); // services never track stock
-  const discount =
-    product.compareAtCents && product.compareAtCents > product.priceCents
-      ? Math.round((1 - product.priceCents / product.compareAtCents) * 100)
-      : 0;
+  const price = priceDisplay(product);
+  const discount = price.pct;
 
   return (
     <Link
@@ -47,6 +47,7 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
             </Badge>
           ) : null}
         </div>
+        <FavouriteButton productId={product.id} className="absolute top-2 right-2" />
         {stock.tone === "out" ? (
           <span className="absolute inset-x-0 bottom-0 bg-foreground/75 py-1 text-center text-xs font-semibold text-background">
             Out of stock
@@ -58,11 +59,10 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
         <p className="text-xs text-muted-foreground">{product.storeName}</p>
         <div className="mt-auto flex items-baseline gap-2 pt-1">
           {product.kind !== "product" ? <span className="text-xs text-muted-foreground">from</span> : null}
-          <span className="text-lg font-extrabold">{money(product.priceCents, product.currency)}</span>
-          {discount > 0 ? (
-            <span className="text-xs text-muted-foreground line-through">{money(product.compareAtCents!, product.currency)}</span>
-          ) : null}
+          <span className="text-lg font-extrabold">{money(price.now, product.currency)}</span>
+          {price.was ? <span className="text-xs text-muted-foreground line-through">{money(price.was, product.currency)}</span> : null}
         </div>
+        {product.salePct && product.saleEndsAt ? <DealCountdown endsAt={product.saleEndsAt} /> : null}
         {stock.tone === "low" ? <p className="text-xs font-semibold text-destructive">{stock.text}</p> : null}
       </div>
     </Link>

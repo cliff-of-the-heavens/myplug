@@ -16,6 +16,9 @@ import { useState } from "react";
 import { AvailabilityCalendar, availabilityRange } from "~/components/booking-calendar";
 import { BusinessBadge } from "~/components/business-badge";
 import { DeliveryFields } from "~/components/delivery-fields";
+import { DealCountdown, priceDisplay } from "~/components/price";
+import { ShareButton } from "~/components/share-button";
+import { CartButtons, FavouriteButton } from "~/components/shopping";
 import { data, Form, Link, redirect, useNavigation } from "react-router";
 import { AuthLink } from "~/components/auth-dialog";
 import { FollowStoreButton } from "~/components/follow-store";
@@ -40,6 +43,7 @@ import { bookedCounts, OrderError, placeOrder } from "~/lib/orders.server";
 import { createPlan } from "~/lib/recurring.server";
 import { offerTerms } from "~/lib/digital";
 import { offersFor } from "~/lib/digital.server";
+import { liveSalesFor } from "~/lib/pricing.server";
 import { listAddresses } from "~/lib/addresses.server";
 import { publicBusinessInfo } from "~/lib/business.server";
 import { availableCouriers, createDeliveryTx, deliveryFromForm, notifyInvitedCouriers, usualCouriers } from "~/lib/delivery.server";
@@ -107,7 +111,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
               : [],
         }
       : null;
-  return { product, related, isOwner, follow, booking, checkout, business, digital };
+  // Live sale (timed deal, store-wide or per-item discount) on this product
+  const sales = (await liveSalesFor(product.storeId)).filter((d) => d.allProducts || d.products.some((p) => p.productId === product.id));
+  const best = sales.sort((a, b) => (b.percentOff ?? 0) - (a.percentOff ?? 0))[0];
+  const sale = best?.percentOff ? { pct: best.percentOff, endsAt: best.endsAt, name: best.name } : null;
+  return { product, related, isOwner, follow, booking, checkout, business, digital, sale };
 }
 
 const CALENDAR_DAYS = 63; // nine weeks ahead
@@ -268,7 +276,8 @@ type Checkout = NonNullable<Route.ComponentProps["loaderData"]["checkout"]>;
 
 function OrderBox({ product, checkout }: { product: LoadedProduct; checkout: Checkout }) {
   const [qty, setQty] = useState(1);
-  const [repeat, setRepeat] = useState(false);
+  // One-off purchases go through the cart; this form sets up repeat deliveries.
+  const repeat = true;
   const nav = useNavigation();
   const busy = nav.state !== "idle" && nav.formData?.get("intent") === "order";
   // Repeat orders don't reserve stock up front, so the in-stock count only limits one-off orders.
@@ -302,14 +311,8 @@ function OrderBox({ product, checkout }: { product: LoadedProduct; checkout: Che
           <strong className="text-lg text-foreground">{money(product.priceCents * qty, product.store.currency)}</strong>
         </span>
       </div>
-      <label className="flex cursor-pointer items-center gap-2 rounded-xl border-2 p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
-        <input type="checkbox" name="repeat" checked={repeat} onChange={(e) => setRepeat(e.target.checked)} className="size-4 accent-primary" />
-        <RepeatIcon className="size-4 text-primary" />
-        <span>
-          <span className="font-semibold">Deliver on repeat</span>
-          <span className="block text-xs text-muted-foreground">e.g. fresh bread every morning. Each delivery is billed separately.</span>
-        </span>
-      </label>
+      <input type="hidden" name="repeat" value="on" />
+      <p className="text-xs text-muted-foreground">Each delivery is billed separately, at the price on the day.</p>
       {repeat ? (
         <div className="grid gap-3 rounded-xl bg-muted/50 p-3 sm:grid-cols-3">
           <Field label="How often">
@@ -464,7 +467,8 @@ function TrackRecord({ record, since }: { record: NonNullable<Route.ComponentPro
 }
 
 export default function ProductPage({ loaderData, actionData }: Route.ComponentProps) {
-  const { product, related, isOwner, follow, booking } = loaderData;
+  const { product, related, isOwner, follow, booking, sale } = loaderData;
+  const price = priceDisplay({ ...product, salePct: sale?.pct });
   const user = useOptionalUser();
   const stock = stockLabel(product.quantity, product.trackStock);
   const isService = product.kind === "service";
@@ -514,7 +518,11 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
         <div className="grid content-start gap-5">
           <div className="grid gap-2">
             {!product.isActive ? <Badge variant="muted">Hidden from shoppers</Badge> : null}
-            <h1 className="text-2xl font-extrabold tracking-tight md:text-3xl">{product.title}</h1>
+            <div className="flex items-start gap-2">
+              <h1 className="flex-1 text-2xl font-extrabold tracking-tight md:text-3xl">{product.title}</h1>
+              <FavouriteButton productId={product.id} className="mt-1" />
+              <ShareButton path={`/p/${product.id}`} title={product.title} text={`${product.title} on MyPlug`} />
+            </div>
             <div className="flex flex-wrap items-center gap-3">
               <Link to={`/s/${product.store.slug}`} className="flex w-fit items-center gap-1.5 text-sm font-semibold text-accent hover:underline">
                 <StoreIcon className="size-4" /> {product.store.name}
@@ -528,10 +536,9 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
 
           <div className="flex flex-wrap items-baseline gap-3">
             {isService ? <span className="text-sm text-muted-foreground">from</span> : null}
-            <span className="text-4xl font-black text-primary">{money(product.priceCents, product.store.currency)}</span>
-            {product.compareAtCents && product.compareAtCents > product.priceCents ? (
-              <span className="text-lg text-muted-foreground line-through">{money(product.compareAtCents, product.store.currency)}</span>
-            ) : null}
+            <span className="text-4xl font-black text-primary">{money(price.now, product.store.currency)}</span>
+            {price.was ? <span className="text-lg text-muted-foreground line-through">{money(price.was, product.store.currency)}</span> : null}
+            {price.pct ? <Badge variant="highlight">-{price.pct}%</Badge> : null}
             {isService ? (
               <Badge variant="accent">
                 <CalendarCheckIcon /> Up to {product.dailyCapacity ?? 1} booking{(product.dailyCapacity ?? 1) > 1 ? "s" : ""} a day
@@ -542,6 +549,12 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
               </Badge>
             )}
           </div>
+          {sale ? (
+            <p className="-mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-primary">
+              {sale.name}
+              {sale.endsAt ? <DealCountdown endsAt={sale.endsAt} /> : null}
+            </p>
+          ) : null}
           {!isService && product.trackStock && product.quantity > 0 ? (
             <p className="-mt-3 text-sm text-muted-foreground">{product.quantity} available</p>
           ) : null}
@@ -574,7 +587,17 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
             ) : booking ? (
               <BookingBox product={product} booking={booking} />
             ) : available ? (
-              <OrderBox product={product} checkout={loaderData.checkout!} />
+              <div className="grid gap-3">
+                <CartButtons productId={product.id} storeId={product.store.id} max={product.trackStock ? product.quantity : 999} />
+                <details className="group rounded-xl border p-3">
+                  <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold">
+                    <RepeatIcon className="size-4 text-primary" /> Deliver on repeat instead (e.g. daily bread)
+                  </summary>
+                  <div className="mt-3">
+                    <OrderBox product={product} checkout={loaderData.checkout!} />
+                  </div>
+                </details>
+              </div>
             ) : (
               <p className="text-sm">
                 <strong>Out of stock.</strong> Tap <em>Get alerts</em> above to get an email when it's back, or message

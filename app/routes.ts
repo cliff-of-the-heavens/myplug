@@ -6,6 +6,10 @@ export default [
   route("search", "routes/search.tsx"),
   route("p/:id", "routes/product.tsx"),
   route("s/:slug", "routes/store.tsx"),
+  route("s/:slug/gift", "routes/store.gift.tsx"),
+  route("gift/:code", "routes/gift.tsx"),
+  route("cart", "routes/cart.tsx"),
+  route("cart/checkout/:storeId", "routes/cart.checkout.tsx"),
   route("safety", "routes/safety.tsx"),
   route("terms", "routes/terms.tsx"),
   route("notifications", "routes/notifications.tsx"),
@@ -13,6 +17,9 @@ export default [
   // Auth
   route("login", "routes/login.tsx"),
   route("register", "routes/register.tsx"),
+  route("forgot-password", "routes/forgot-password.tsx"),
+  route("reset-password", "routes/reset-password.tsx"),
+  route("account/password", "routes/account.password.tsx"),
   route("logout", "routes/logout.tsx"),
 
   // Customer
@@ -22,6 +29,8 @@ export default [
   route("account/plans", "routes/account.plans.tsx"),
   route("account/addresses", "routes/account.addresses.tsx"),
   route("account/library", "routes/account.library.tsx"),
+  route("account/favourites", "routes/account.favourites.tsx"),
+  route("account/coupons", "routes/account.coupons.tsx"),
 
   // Couriers
   route("courier", "routes/courier.tsx"),
@@ -49,6 +58,8 @@ export default [
       route("orders", "routes/sell.orders.tsx"),
       route("orders/:id", "routes/sell.order.tsx"),
       route("promote", "routes/sell.promote.tsx"),
+      route("deals", "routes/sell.deals.tsx"),
+      route("coupons", "routes/sell.coupons.tsx"),
       route("alerts", "routes/sell.alerts.tsx"),
       route("plans", "routes/sell.plans.tsx"),
       route("store", "routes/sell.store.tsx"),
@@ -78,6 +89,8 @@ export default [
   route("api/cron/alerts", "routes/api.cron.alerts.ts"),
   route("api/cron/daily", "routes/api.cron.daily.ts"),
   route("api/upload", "routes/api.upload.ts"),
+  route("api/favourite", "routes/api.favourite.ts"),
+  route("api/cart", "routes/api.cart.ts"),
   route("api/media-upload", "routes/api.media-upload.ts"),
   route("files/:type/:id", "routes/files.ts"),
   route("media/:grantId", "routes/media.ts"),

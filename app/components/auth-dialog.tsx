@@ -3,13 +3,16 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useFetcher, useLocation, type LinkProps } from "react-router";
 import { cn } from "~/lib/utils";
 import type { action as loginAction } from "~/routes/login";
+import type { action as forgotAction } from "~/routes/forgot-password";
 import type { action as registerAction } from "~/routes/register";
 import { FormError } from "./page";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Field, Input, Textarea } from "./ui/input";
 
-export type AuthMode = "login" | "register";
+export type AuthMode = "login" | "register" | "forgot";
+
+const MODE_PATH: Record<AuthMode, string> = { login: "/login", register: "/register", forgot: "/forgot-password" };
 type Role = "customer" | "merchant" | "courier";
 type AuthOptions = { redirectTo?: string; role?: Role };
 
@@ -33,13 +36,13 @@ function SwitchLink({ mode, onSwitch, children }: { mode: AuthMode; onSwitch?: (
       {children}
     </button>
   ) : (
-    <Link to={`/${mode}`} className={className}>
+    <Link to={MODE_PATH[mode]} className={className}>
       {children}
     </Link>
   );
 }
 
-export function LoginForm({ redirectTo, onSwitch }: { redirectTo: string; onSwitch?: () => void }) {
+export function LoginForm({ redirectTo, onSwitch, onForgot }: { redirectTo: string; onSwitch?: () => void; onForgot?: () => void }) {
   const fetcher = useFetcher<typeof loginAction>();
   const busy = fetcher.state !== "idle";
   return (
@@ -52,6 +55,11 @@ export function LoginForm({ redirectTo, onSwitch }: { redirectTo: string; onSwit
       <Field label="Password">
         <Input name="password" type="password" autoComplete="current-password" required />
       </Field>
+      <p className="-mt-2 text-right text-sm">
+        <SwitchLink mode="forgot" onSwitch={onForgot}>
+          Forgot password?
+        </SwitchLink>
+      </p>
       <Button type="submit" size="lg" disabled={busy}>
         {busy ? "Signing in..." : "Sign in"}
       </Button>
@@ -59,6 +67,45 @@ export function LoginForm({ redirectTo, onSwitch }: { redirectTo: string; onSwit
         New to MyPlug?{" "}
         <SwitchLink mode="register" onSwitch={onSwitch}>
           Create an account
+        </SwitchLink>
+      </p>
+    </fetcher.Form>
+  );
+}
+
+/** Asks for a reset link by email. The reply never says whether the email has an account. */
+export function ForgotForm({ onBack }: { onBack?: () => void }) {
+  const fetcher = useFetcher<typeof forgotAction>();
+  const busy = fetcher.state !== "idle";
+  const sent = fetcher.data && "sent" in fetcher.data;
+  return (
+    <fetcher.Form method="post" action="/forgot-password" className="grid gap-4">
+      {sent ? (
+        <div className="grid gap-2 rounded-xl bg-success/15 p-3 text-sm">
+          <p className="font-semibold text-success">Check your email</p>
+          <p>If an account uses that address, we've sent a link to choose a new password. It works once, for the next hour.</p>
+          {fetcher.data && "devLink" in fetcher.data && fetcher.data.devLink ? (
+            <p className="text-xs">
+              Development only (no email service set up):{" "}
+              <a href={fetcher.data.devLink} className="font-semibold text-primary underline">open the reset link</a>
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          <FormError error={fetcher.data && "error" in fetcher.data ? fetcher.data.error : null} />
+          <Field label="Email">
+            <Input name="email" type="email" autoComplete="email" required autoFocus />
+          </Field>
+          <Button type="submit" size="lg" disabled={busy}>
+            {busy ? "Sending..." : "Email me a reset link"}
+          </Button>
+        </>
+      )}
+      <p className="text-center text-sm text-muted-foreground">
+        Remembered it?{" "}
+        <SwitchLink mode="login" onSwitch={onBack}>
+          Back to sign in
         </SwitchLink>
       </p>
     </fetcher.Form>
@@ -236,13 +283,21 @@ export function AuthDialogProvider({ signedIn, children }: { signedIn: boolean; 
                 onSwitch={() => switchTo("login")}
               />
             </>
+          ) : state?.mode === "forgot" ? (
+            <>
+              <DialogHeader className="text-center">
+                <DialogTitle className="text-2xl">Forgot your password?</DialogTitle>
+                <DialogDescription>Enter your email and we'll send you a link to choose a new one.</DialogDescription>
+              </DialogHeader>
+              <ForgotForm key="forgot" onBack={() => switchTo("login")} />
+            </>
           ) : (
             <>
               <DialogHeader className="text-center">
                 <DialogTitle className="text-2xl">Welcome back</DialogTitle>
                 <DialogDescription>Sign in to order, chat with merchants and track deliveries.</DialogDescription>
               </DialogHeader>
-              <LoginForm key="login" redirectTo={redirectTo} onSwitch={() => switchTo("register")} />
+              <LoginForm key="login" redirectTo={redirectTo} onSwitch={() => switchTo("register")} onForgot={() => switchTo("forgot")} />
             </>
           )}
         </DialogContent>
@@ -270,7 +325,7 @@ export function AuthLink({
 
   return (
     <Link
-      to={`/${mode}?${params}`}
+      to={`${MODE_PATH[mode]}?${params}`}
       {...props}
       onClick={(e) => {
         onClick?.(e);

@@ -43,6 +43,20 @@
       "when": 1792609854416,
       "tag": "0005_delivery_couriers_digital_business",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792628086642,
+      "tag": "0006_cart_deals_coupons_favourites",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792631034287,
+      "tag": "0007_password_reset",
+      "breakpoints": true
     }
   ]
 }

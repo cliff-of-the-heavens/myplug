@@ -1,16 +1,21 @@
 import { eq } from "drizzle-orm";
-import { PackageOpenIcon } from "lucide-react";
-import { data } from "react-router";
+import { GiftIcon, PackageOpenIcon } from "lucide-react";
+import { data, Link } from "react-router";
 import { Container, EmptyState } from "~/components/page";
 import { ProductGrid } from "~/components/product-card";
 import { ReportButton } from "~/components/report-button";
 import { SafeImage } from "~/components/safe-image";
 import { db, schema } from "~/db/client.server";
 import { BusinessBadge } from "~/components/business-badge";
+import { DealCountdown } from "~/components/price";
+import { ShareButton } from "~/components/share-button";
+import { FavouriteButton } from "~/components/shopping";
+import { Button } from "~/components/ui/button";
 import { FollowStoreButton } from "~/components/follow-store";
 import { getFollowState } from "~/lib/alerts.server";
 import { getUser } from "~/lib/auth.server";
 import { publicBusinessInfo } from "~/lib/business.server";
+import { liveSalesFor } from "~/lib/pricing.server";
 import { searchProducts } from "~/lib/catalog.server";
 import { date } from "~/lib/format";
 import type { Route } from "./+types/store";
@@ -32,11 +37,12 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     publicBusinessInfo(store.id),
   ]);
   const { reviewNote, alertsBlocked, ...publicStore } = store; // admin-only fields stay on the server
-  return { store: publicStore, products, follow, business };
+  const sales = (await liveSalesFor(store.id)).map((d) => ({ id: d.id, name: d.name, percentOff: d.percentOff, allProducts: d.allProducts, endsAt: d.endsAt }));
+  return { store: publicStore, products, follow, business, sales };
 }
 
 export default function StorePage({ loaderData }: Route.ComponentProps) {
-  const { store, products, follow, business } = loaderData;
+  const { store, products, follow, business, sales } = loaderData;
   return (
     <>
       <div className="brand-gradient h-32 md:h-44" />
@@ -55,12 +61,29 @@ export default function StorePage({ loaderData }: Route.ComponentProps) {
               {products.length} products · on MyPlug since {date(store.createdAt)}
             </p>
           </div>
-          <div className="ml-auto flex items-center gap-3 pb-1">
+          <div className="ml-auto flex flex-wrap items-center gap-2 pb-1">
+            <FavouriteButton storeId={store.id} label="Save store" />
+            <ShareButton path={`/s/${store.slug}`} title={store.name} text={`Check out ${store.name} on MyPlug`} />
+            {store.couponsEnabled ? (
+              <Button asChild variant="outline" size="sm">
+                <Link to={`/s/${store.slug}/gift`}><GiftIcon /> Gift coupon</Link>
+              </Button>
+            ) : null}
             <FollowStoreButton storeId={store.id} storeName={store.name} follow={follow} />
             <ReportButton targetType="store" targetId={store.id} label="Report store" />
           </div>
         </div>
         {store.description ? <p className="max-w-3xl text-muted-foreground">{store.description}</p> : null}
+        {sales.length ? (
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-highlight/25 px-4 py-3 text-sm font-semibold">
+            {sales.map((d) => (
+              <span key={d.id} className="flex flex-wrap items-center gap-2">
+                {d.name}: {d.percentOff}% off {d.allProducts ? "everything" : "selected items"}
+                {d.endsAt ? <DealCountdown endsAt={d.endsAt} /> : null}
+              </span>
+            ))}
+          </div>
+        ) : null}
         {products.length ? (
           <ProductGrid products={products} />
         ) : (

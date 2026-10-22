@@ -1,4 +1,4 @@
-import { BadgeCheckIcon, BellRingIcon, LayoutDashboardIcon, MegaphoneIcon, PackageIcon, RepeatIcon, SettingsIcon, ShoppingCartIcon } from "lucide-react";
+import { BadgeCheckIcon, BellRingIcon, GiftIcon, PercentIcon, LayoutDashboardIcon, MegaphoneIcon, PackageIcon, RepeatIcon, SettingsIcon, ShoppingCartIcon } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 import { Container } from "~/components/page";
 import { requireMerchant } from "~/lib/auth.server";
@@ -15,6 +15,8 @@ const NAV = [
   { to: "/sell/products", label: "Listings", icon: PackageIcon },
   { to: "/sell/orders", label: "Orders & bookings", icon: ShoppingCartIcon },
   { to: "/sell/plans", label: "Repeat orders", icon: RepeatIcon },
+  { to: "/sell/deals", label: "Deals & promo codes", icon: PercentIcon },
+  { to: "/sell/coupons", label: "Gift coupons", icon: GiftIcon },
   { to: "/sell/promote", label: "Advertise", icon: MegaphoneIcon },
   { to: "/sell/alerts", label: "Alerts", icon: BellRingIcon },
   { to: "/sell/store", label: "Store", icon: SettingsIcon },

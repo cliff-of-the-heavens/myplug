@@ -40,6 +40,11 @@ Tailwind v4 + shadcn/ui components · Vercel Blob for images · deployed on Verc
 | 28 | Digital products (video, audio, PDF) with previews; download / stream; time- and view-limited | `digital_offers`, `digital_grants`, `/account/library`, signed `/media/:id` links |
 | 29 | Business registration number, licences, admin-verified badge that lapses on expiry | `business_licenses`, `/sell/business`, admin Merchants page, green badge on store/product |
 | 30 | Terms of Use accepted at sign-up (and by existing users once) | `/terms`, `users.terms_version`, `app/lib/terms.ts` |
+| 31 | Store currency set by the admin (default MWK) | Admin → Merchants: currency per store; merchants see it read-only |
+| 32 | Share products and stores; merchants share their store link | Share button (device share sheet, WhatsApp, Facebook, X, email, copy); "Share your store" on the seller dashboard |
+| 33 | Favourites and shopping cart | `favourites`, `cart_items`; hearts on cards, `/account/favourites`, `/cart`, per-store checkout |
+| 34 | Deals: timed, end-of-month, store-wide, per item; promo codes | `deals`, `deal_products`; Seller → Deals & promo codes |
+| 35 | Gift coupons bought from a store, shared, spent online or in the shop | `coupons`, `coupon_redemptions`; `/s/:slug/gift`, `/gift/:code`, Seller → Gift coupons |
 
 ## Getting started
 
@@ -314,6 +319,70 @@ The terms also include other conditions I'd recommend for this kind of business:
 **Have a Malawian lawyer review the terms before launch.** In particular, check consumer-protection rules,
 which may limit how far liability can be excluded, and the Data Protection Act 2024. Under that Act you
 may need to register as a data controller and appoint a contact person, because you store ID documents.
+
+## Shopping: favourites, cart, sharing
+
+- **Currency** is set by admins per store (*Admin → Merchants*), defaulting to Malawian kwacha. Merchants see
+  it in their settings but can't change it. Changing it relabels prices without converting them; existing
+  orders keep the currency they were placed in.
+- **Favourites:** customers tap the heart on any product card or product page, or **Save store** on a store
+  page. Everything saved is listed under *Favourites*. Merchants see how many people saved their store.
+- **Cart:** *Add to cart* or *Buy now* on product pages. The cart groups items by store, and each store is
+  checked out separately because each store delivers and gets paid separately. Checkout uses the usual
+  address, delivery and pickup-security choices, plus pay-after-delivery or pay-in-advance, a promo code
+  and a gift coupon. Services (booked by date), digital products and repeat deliveries keep their own
+  buttons on the product page.
+- **Sharing:** products, stores and gift coupons have a **Share** button: the device's share sheet where
+  available, plus WhatsApp, Facebook, X, email and copy link. The seller dashboard has a **Share your
+  store** card with the store's link (`/s/<store>`).
+
+## Deals and promo codes
+
+*Seller → Deals & promo codes.* Deals apply on top of the listed price; prices themselves aren't changed.
+
+- **Sales** take a percentage off automatically, on everything or on chosen items. They can have start and
+  end times, with presets for 24 hours, this weekend, or until the end of the month. That covers timed deals,
+  end-of-month promotions, general discounts and per-item discounts. When several sales apply, the biggest
+  one wins. Listings show the sale price, the original price struck through, and a live countdown.
+- **Promo codes** take a percentage or a fixed amount off at checkout, optionally only on chosen items,
+  with an optional minimum spend, dates, a total number of uses and a limit per customer. Limits are
+  checked inside the order transaction with the code locked, so they hold under load.
+
+All prices are worked out on the server when the order is placed: the sale price first, then the promo
+code, then the gift coupon.
+
+## Gift coupons
+
+- **Setup:** stores switch coupons on under *Seller → Gift coupons*, with the smallest and largest amount
+  and how long coupons stay valid (default one year).
+- **Buying:** a customer buys one from the store page (*Gift coupon* button, `/s/<store>/gift`), choosing an
+  amount and optionally the recipient's name and a message. It's a prepaid order. When the store marks it
+  paid, the coupon becomes active and the buyer is notified.
+- **Sharing:** the coupon page (`/gift/<code>`) shows the balance, the code and how to use it, and doesn't
+  need an account to open. The buyer sends it with the Share button. Anyone with the code can spend it,
+  registered or not, so it works like a gift card. The page is kept out of search engines.
+- **Spending online:** enter the code at checkout. It pays part or all of the order, and if it covers the
+  whole order the bill is settled at once. Whatever is left stays on the coupon.
+- **Spending at the shop:** the merchant enters the code under *Seller → Gift coupons → Take a coupon at
+  the counter*, checks the balance, and takes an amount. The amount can't exceed the balance.
+- **Safety:** codes are 12 random characters (`GIFT-XXXX-XXXX-XXXX`). Every use is logged and the buyer is
+  notified each time. A coupon only works at the store it was bought from, and cancelling an order puts the
+  money back on the coupon.
+
+## Passwords
+
+- **Forgot password:** a link in the sign-in pop-up and on `/login` leads to `/forgot-password`. MyPlug
+  emails a reset link (`/reset-password?token=…`) that works **once, for one hour**. Only a SHA-256 hash of
+  the token is stored. The reply is the same whether or not the email has an account, so the form can't
+  reveal who's registered. Requests are capped at 3 per account per hour. Setting the new password signs
+  the user in.
+- **Change password:** *Account menu → Change password* (`/account/password`, all account types). It needs
+  the current password, and the new one must be different.
+- **Either way**, every other signed-in session for that account is signed out: sessions record when they
+  started, and `users.password_changed_at` invalidates older ones. The user is also emailed that their
+  password changed, with a link to reset it if it wasn't them.
+- **Without an email service** in local development, the reset link is printed in the server log and shown
+  on the forgot-password page. It's never shown in production.
 
 ## How the randomised, ad-weighted feed works
 

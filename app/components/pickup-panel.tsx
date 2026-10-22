@@ -4,6 +4,7 @@ import type { Delivery, OrderStatus } from "~/db/schema";
 import { HANDOVER_LABEL, METHOD_LABEL } from "~/lib/delivery";
 import { date, money } from "~/lib/format";
 import { usePolling } from "~/lib/hooks";
+import { DateTimeField } from "./datetime-field";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -13,12 +14,6 @@ type Courier = { id: string; name: string; phone: string; vehicle: string | null
 type Quote = { id: string; status: string; quoteCents: number | null; courier: { name: string } };
 type Log = { id: string; action: string; detail: string | null; createdAt: Date | string; actor: string | null };
 
-/** Local date-time string for a datetime-local input. */
-function toLocalInput(d: Date | string | null) {
-  if (!d) return "";
-  const x = new Date(d);
-  return new Date(x.getTime() - x.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
 
 /**
  * The merchant's side of a pickup: who is coming (with photo), when, checking their code or
@@ -134,7 +129,7 @@ export function PickupPanel({
               <input type="hidden" name="intent" value="pickup-time" />
               <label className="grid gap-1">
                 <span className="text-xs font-semibold">Pickup time</span>
-                <Input name="pickupAt" type="datetime-local" defaultValue={toLocalInput(delivery.pickupAt)} className="h-9" />
+                <DateTimeField name="pickupAt" defaultValue={delivery.pickupAt} className="h-9" />
               </label>
               <Button type="submit" size="sm" variant="outline" disabled={busy}>Save</Button>
               <span className="text-xs text-muted-foreground">{delivery.pickupAt ? date(delivery.pickupAt, true) : "Any time"} · leave empty for any time</span>

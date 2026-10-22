@@ -7,7 +7,7 @@ import { SafeImage } from "~/components/safe-image";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
-import { Input } from "~/components/ui/input";
+import { Input, NativeSelect } from "~/components/ui/input";
 import { db, schema } from "~/db/client.server";
 import { qualified } from "~/db/sql";
 import { storeStatus, type StoreStatus } from "~/db/schema";
@@ -15,7 +15,7 @@ import { handleAccountAction, likeTerm } from "~/lib/admin.server";
 import { requireAdmin } from "~/lib/auth.server";
 import { LicenseError, reviewLicense } from "~/lib/business.server";
 import { today } from "~/lib/dates";
-import { date } from "~/lib/format";
+import { CURRENCIES, date, isCurrency } from "~/lib/format";
 import { cn, isUuid, str } from "~/lib/utils";
 import type { Route } from "./+types/admin.merchants";
 
@@ -33,6 +33,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     .select({
       storeId: stores.id,
       registrationNumber: stores.registrationNumber,
+      currency: stores.currency,
       storeName: stores.name,
       slug: stores.slug,
       logoUrl: stores.logoUrl,
@@ -72,6 +73,13 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
   const admin = await requireAdmin(request);
   const form = await request.formData();
+  if (form.get("intent") === "currency") {
+    const storeId = str(form.get("storeId"));
+    const currency = form.get("currency");
+    if (!isUuid(storeId) || !isCurrency(currency)) return { error: "Choose a currency." };
+    await db.update(schema.stores).set({ currency }).where(eq(schema.stores.id, storeId));
+    return { ok: `Currency set to ${currency}. The store's prices keep their numbers, now shown in ${currency}.` };
+  }
   if (form.get("intent") === "license") {
     const id = str(form.get("licenseId"));
     const action = str(form.get("action")) as "verify" | "reject" | "show" | "hide";
@@ -193,6 +201,17 @@ export default function AdminMerchants({ loaderData, actionData }: Route.Compone
                   <p className="text-sm">
                     Registration number: <strong>{m.registrationNumber ?? "not given"}</strong>
                   </p>
+                  <Form method="post" className="flex flex-wrap items-center gap-2 text-sm">
+                    <input type="hidden" name="intent" value="currency" />
+                    <input type="hidden" name="storeId" value={m.storeId} />
+                    <span>Currency</span>
+                    <NativeSelect name="currency" defaultValue={m.currency} className="h-8 w-auto">
+                      {CURRENCIES.map((c) => (
+                        <option key={c.code} value={c.code}>{c.code} · {c.name}</option>
+                      ))}
+                    </NativeSelect>
+                    <Button type="submit" size="sm" variant="outline">Save</Button>
+                  </Form>
                   <LicenseList licenses={licenses.filter((l) => l.storeId === m.storeId)} today={loaderData.today} />
                   <div className="flex gap-3 text-sm">
                     <Link to={`/admin/users/${m.userId}`} className="font-semibold text-primary hover:underline">Details</Link>

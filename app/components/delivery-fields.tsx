@@ -5,6 +5,7 @@ import { HANDOVER_LABEL, HANDOVER_TYPES, MAX_QUOTE_INVITES, SECOND_CHECK_LABEL }
 import { money } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { AddressFields } from "./address-fields";
+import { DateTimeField } from "./datetime-field";
 import { ImageDropzone } from "./image-dropzone";
 import { Field, Input, NativeSelect } from "./ui/input";
 
@@ -235,7 +236,7 @@ export function DeliveryFields({
             </Field>
             {pickupWhen === "at" ? (
               <Field label="When" hint="The store may adjust it">
-                <Input name="pickupAt" type="datetime-local" required />
+                <DateTimeField name="pickupAt" required />
               </Field>
             ) : null}
           </div>

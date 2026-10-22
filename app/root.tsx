@@ -20,6 +20,7 @@ import { getCategories } from "./lib/catalog.server";
 import { unreadCount } from "./lib/messaging.server";
 import { ICON_VERSION, iconUrl } from "./lib/brand";
 import { unreadNotifications } from "./lib/notify.server";
+import { cartCount, favouriteIds } from "./lib/shopping.server";
 import { TERMS_VERSION } from "./lib/terms";
 import { TermsGate } from "./components/terms-gate";
 
@@ -43,9 +44,12 @@ export const meta: Route.MetaFunction = () => [
 export async function loader({ request }: Route.LoaderArgs) {
   const [user, categories] = await Promise.all([getUser(request), getCategories()]);
   const [unread, notices] = user ? await Promise.all([unreadCount(user), unreadNotifications(user.id)]) : [0, 0];
+  // Hearts and the cart badge, for customers
+  const [saved, cart] =
+    user?.role === "customer" ? await Promise.all([favouriteIds(user.id), cartCount(user.id)]) : [{ products: [], stores: [] }, 0];
   // Everyone must accept the current Terms of Use (new users at sign-up, existing users once).
   const needsTerms = !!user && user.termsVersion !== TERMS_VERSION;
-  return { user, categories, unread, notices, needsTerms };
+  return { user, categories, unread, notices, needsTerms, saved, cart };
 }
 
 // Don't refetch categories/user on every form submission unless it could have changed.
@@ -104,10 +108,10 @@ function useBlockStrayFileDrops() {
 export default function App({ loaderData }: Route.ComponentProps) {
   useServiceWorker();
   useBlockStrayFileDrops();
-  const { user, categories, unread, notices, needsTerms } = loaderData;
+  const { user, categories, unread, notices, needsTerms, cart } = loaderData;
   return (
     <AuthDialogProvider signedIn={!!user}>
-      <SiteHeader user={user} categories={categories} unread={unread} notices={notices} />
+      <SiteHeader user={user} categories={categories} unread={unread} notices={notices} cart={cart} />
       {needsTerms ? <TermsGate /> : null}
       <main className="pb-20 md:pb-0">
         <Outlet />

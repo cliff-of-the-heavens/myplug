@@ -19,3 +19,6 @@ vite.demo.config.ts
 *.zip
 *.7z
 *.rar
+
+# Local demo database and tests (in-memory Postgres); not part of the app
+.demo/

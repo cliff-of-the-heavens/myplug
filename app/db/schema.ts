@@ -81,6 +81,9 @@ export const quoteStatus = pgEnum("quote_status", ["invited", "quoted", "decline
 export const reviewStatus = pgEnum("review_status", ["pending", "approved", "rejected", "suspended"]);
 export const licenseKind = pgEnum("license_kind", ["primary", "other"]);
 export const licenseStatus = pgEnum("license_status", ["pending", "verified", "rejected"]);
+/** Store deals: automatic sales (timed, store-wide or per item) and promo codes entered at checkout. */
+export const dealKind = pgEnum("deal_kind", ["sale", "code"]);
+export const couponStatus = pgEnum("coupon_status", ["pending", "active", "used", "expired", "void"]);
 
 /** When the customer pays: after delivery (billed with terms) or up front. */
 export const paymentTiming = pgEnum("payment_timing", ["on_delivery", "prepaid"]);
@@ -134,6 +137,7 @@ export const users = pgTable("users", {
   lastActiveAt: timestamp("last_active_at", { withTimezone: true }).notNull().defaultNow(), // for inactivity archiving
   termsVersion: text("terms_version"), // version of the terms of use the user accepted
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }), // sessions from before this are signed out
   ...timestamps,
 });
 
@@ -155,6 +159,11 @@ export const stores = pgTable("stores", {
   deliveryMode: storeDeliveryMode("delivery_mode").notNull().default("merchant"),
   preferredCourierId: uuid("preferred_courier_id").references((): AnyPgColumn => couriers.id, { onDelete: "set null" }),
   pickupAddress: text("pickup_address"), // where couriers and collectors pick up orders
+  // Gift coupons customers can buy from this store and give to anyone
+  couponsEnabled: boolean("coupons_enabled").notNull().default(false),
+  couponMinCents: money("coupon_min_cents"),
+  couponMaxCents: money("coupon_max_cents"),
+  couponValidityDays: integer("coupon_validity_days").notNull().default(365),
   deletionWarnedAt: timestamp("deletion_warned_at", { withTimezone: true }), // owner emailed before automatic deletion
   reviewNote: text("review_note"), // admin's reason when rejecting/suspending
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
@@ -474,6 +483,139 @@ export const digitalGrants = pgTable(
   (t) => [index("digital_grants_user_idx").on(t.userId)],
 );
 
+/** A customer's saved products and stores. */
+export const favourites = pgTable(
+  "favourites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").references(() => products.id, { onDelete: "cascade" }),
+    storeId: uuid("store_id").references(() => stores.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("favourites_user_product_idx").on(t.userId, t.productId),
+    uniqueIndex("favourites_user_store_idx").on(t.userId, t.storeId),
+  ],
+);
+
+/** Shopping cart lines (signed-in customers). */
+export const cartItems = pgTable(
+  "cart_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    quantity: integer("quantity").notNull().default(1),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("cart_items_user_product_idx").on(t.userId, t.productId)],
+);
+
+/**
+ * A store deal. "sale": a percentage off applied automatically (all items, or chosen ones),
+ * optionally between two dates: timed deals, end-of-month promotions, general or per-item
+ * discounts. "code": a promo code customers enter at checkout.
+ */
+export const deals = pgTable(
+  "deals",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    kind: dealKind("kind").notNull(),
+    name: text("name").notNull(),
+    code: text("code"), // promo codes: upper-case, unique per store
+    percentOff: integer("percent_off"), // 1-90
+    amountOffCents: money("amount_off_cents"), // promo codes only: fixed amount off
+    allProducts: boolean("all_products").notNull().default(true),
+    minSpendCents: money("min_spend_cents"),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    maxUses: integer("max_uses"), // promo codes: in total
+    perCustomerLimit: integer("per_customer_limit"), // promo codes: per customer
+    usesCount: integer("uses_count").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [index("deals_store_idx").on(t.storeId, t.kind), uniqueIndex("deals_store_code_idx").on(t.storeId, t.code)],
+);
+
+/** Products a deal applies to (when not all products). */
+export const dealProducts = pgTable(
+  "deal_products",
+  {
+    dealId: uuid("deal_id")
+      .notNull()
+      .references(() => deals.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+  },
+  (t) => [primaryKey({ columns: [t.dealId, t.productId] }), index("deal_products_product_idx").on(t.productId)],
+);
+
+/** A gift coupon bought from a store; whoever holds the code can spend it there, online or in person. */
+export const coupons = pgTable(
+  "coupons",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull().unique(), // e.g. GIFT-7K2Q-9A4M-XW3D
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    purchaserId: uuid("purchaser_id").references(() => users.id, { onDelete: "set null" }),
+    orderId: uuid("order_id").references((): AnyPgColumn => orders.id, { onDelete: "set null" }), // the purchase
+    initialCents: money("initial_cents").notNull(),
+    balanceCents: money("balance_cents").notNull(),
+    currency: text("currency").notNull().default("MWK"),
+    recipientName: text("recipient_name"),
+    message: text("message"),
+    status: couponStatus("status").notNull().default("pending"), // active once the purchase is paid
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index("coupons_store_idx").on(t.storeId), index("coupons_purchaser_idx").on(t.purchaserId)],
+);
+
+/** Every use of a coupon: at online checkout or at the shop counter. */
+export const couponRedemptions = pgTable("coupon_redemptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  couponId: uuid("coupon_id")
+    .notNull()
+    .references(() => coupons.id, { onDelete: "cascade" }),
+  orderId: uuid("order_id").references((): AnyPgColumn => orders.id, { onDelete: "set null" }),
+  amountCents: money("amount_cents").notNull(),
+  channel: text("channel").notNull(), // "online" | "in_store"
+  staffId: uuid("staff_id").references(() => users.id, { onDelete: "set null" }), // merchant who redeemed it in store
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** One-time password reset links. Only a hash of the token is stored. */
+export const passwordResets = pgTable(
+  "password_resets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("password_resets_user_idx").on(t.userId, t.createdAt)],
+);
+
 /** Small key/value store for admin-editable platform settings. */
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
@@ -495,7 +637,11 @@ export const orders = pgTable(
       .notNull()
       .references(() => stores.id),
     status: orderStatus("status").notNull().default("pending"),
-    totalCents: money("total_cents").notNull(),
+    totalCents: money("total_cents").notNull(), // after discounts
+    subtotalCents: money("subtotal_cents"), // items at their (sale) prices, before promo codes
+    discountCents: money("discount_cents").notNull().default(0), // promo code discount
+    promoCode: text("promo_code"),
+    couponCents: money("coupon_cents").notNull().default(0), // part of the total paid with a gift coupon
     currency: text("currency").notNull().default("MWK"), // snapshot of the store's currency when ordered
     paymentTiming: paymentTiming("payment_timing").notNull().default("on_delivery"),
     bookingDate: date("booking_date", { mode: "string" }), // services: the day booked
@@ -854,6 +1000,36 @@ export const digitalGrantsRelations = relations(digitalGrants, ({ one }) => ({
   order: one(orders, { fields: [digitalGrants.orderId], references: [orders.id] }),
 }));
 
+export const favouritesRelations = relations(favourites, ({ one }) => ({
+  product: one(products, { fields: [favourites.productId], references: [products.id] }),
+  store: one(stores, { fields: [favourites.storeId], references: [stores.id] }),
+}));
+
+export const cartItemsRelations = relations(cartItems, ({ one }) => ({
+  product: one(products, { fields: [cartItems.productId], references: [products.id] }),
+}));
+
+export const dealsRelations = relations(deals, ({ one, many }) => ({
+  store: one(stores, { fields: [deals.storeId], references: [stores.id] }),
+  products: many(dealProducts),
+}));
+
+export const dealProductsRelations = relations(dealProducts, ({ one }) => ({
+  deal: one(deals, { fields: [dealProducts.dealId], references: [deals.id] }),
+  product: one(products, { fields: [dealProducts.productId], references: [products.id] }),
+}));
+
+export const couponsRelations = relations(coupons, ({ one, many }) => ({
+  store: one(stores, { fields: [coupons.storeId], references: [stores.id] }),
+  order: one(orders, { fields: [coupons.orderId], references: [orders.id] }),
+  redemptions: many(couponRedemptions),
+}));
+
+export const couponRedemptionsRelations = relations(couponRedemptions, ({ one }) => ({
+  coupon: one(coupons, { fields: [couponRedemptions.couponId], references: [coupons.id] }),
+  order: one(orders, { fields: [couponRedemptions.orderId], references: [orders.id] }),
+}));
+
 export const productImagesRelations = relations(productImages, ({ one }) => ({
   product: one(products, { fields: [productImages.productId], references: [products.id] }),
 }));
@@ -958,4 +1134,6 @@ export type StoreDeliveryMode = (typeof storeDeliveryMode.enumValues)[number];
 export type SecondCheck = (typeof secondCheck.enumValues)[number];
 export type MediaType = (typeof mediaType.enumValues)[number];
 export type Delivery = typeof deliveries.$inferSelect;
+export type Deal = typeof deals.$inferSelect;
+export type Coupon = typeof coupons.$inferSelect;
 export type ReportTarget = (typeof reportTarget.enumValues)[number];

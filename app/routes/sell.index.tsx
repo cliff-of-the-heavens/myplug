@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router";
 import { PageHeader } from "~/components/page";
+import { ShareButton } from "~/components/share-button";
 import { BillStatusBadge, OrderStatusBadge } from "~/components/status";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -67,7 +68,11 @@ export async function loader({ request }: Route.LoaderArgs) {
     }),
   ]);
 
-  return { stock, orderStats, billStats, recent, currency: user.storeCurrency };
+  const [{ followers }] = await db
+    .select({ followers: sql<number>`count(*)::int` })
+    .from(schema.favourites)
+    .where(eq(schema.favourites.storeId, user.storeId));
+  return { stock, orderStats, billStats, recent, currency: user.storeCurrency, storeSlug: user.storeSlug, followers };
 }
 
 function Stat({
@@ -100,7 +105,7 @@ function Stat({
 }
 
 export default function SellOverview({ loaderData }: Route.ComponentProps) {
-  const { stock, orderStats, billStats, recent, currency } = loaderData;
+  const { stock, orderStats, billStats, recent, currency, storeSlug, followers } = loaderData;
 
   return (
     <>
@@ -115,6 +120,20 @@ export default function SellOverview({ loaderData }: Route.ComponentProps) {
           </Button>
         }
       />
+
+      <Card className="mb-8 border-primary/30 bg-primary/5">
+        <CardContent className="flex flex-wrap items-center gap-3 pt-5">
+          <div className="grid flex-1 gap-0.5">
+            <p className="font-bold">Share your store</p>
+            <p className="text-sm text-muted-foreground">
+              Send your link to customers, or put it on your social pages and posters. Visitors land on your store and can save it
+              {followers ? ` (${followers} already have)` : ""}.
+            </p>
+            <p className="font-mono text-xs break-all">/s/{storeSlug}</p>
+          </div>
+          <ShareButton path={`/s/${storeSlug}`} title="My store on MyPlug" text="Shop with us on MyPlug:" label="Share store link" variant="default" />
+        </CardContent>
+      </Card>
 
       <h2 className="mb-3 font-bold">Orders & deliveries</h2>
       <div className="mb-8 grid grid-cols-2 gap-3 lg:grid-cols-4">

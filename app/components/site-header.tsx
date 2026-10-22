@@ -1,5 +1,9 @@
 import {
   BellIcon,
+  KeyRoundIcon,
+  GiftIcon,
+  HeartIcon,
+  ShoppingCartIcon,
   BikeIcon,
   HomeIcon,
   ImagePlusIcon,
@@ -135,6 +139,16 @@ function AccountMenu({ user }: { user: SessionUser }) {
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
+              <Link to="/account/favourites">
+                <HeartIcon /> Favourites
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/account/coupons">
+                <GiftIcon /> Gift coupons
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
               <Link to="/account/plans">
                 <RepeatIcon /> Repeat orders
               </Link>
@@ -173,6 +187,11 @@ function AccountMenu({ user }: { user: SessionUser }) {
             <MessageCircleIcon /> Messages
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/account/password">
+            <KeyRoundIcon /> Change password
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {/* Submitted from onSelect: a <form> inside the menu is removed as the menu closes, before it can submit. */}
         <DropdownMenuItem onSelect={() => submit(null, { method: "post", action: "/logout" })}>
@@ -197,11 +216,13 @@ export function SiteHeader({
   categories,
   unread,
   notices,
+  cart,
 }: {
   user: SessionUser | null;
   categories: Category[];
   unread: number;
   notices: number;
+  cart: number;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
@@ -216,6 +237,14 @@ export function SiteHeader({
           </Button>
           {user ? (
             <>
+              {user.role === "customer" ? (
+                <Button asChild variant="ghost" size="icon" className="relative">
+                  <Link to="/cart" aria-label="Cart">
+                    <ShoppingCartIcon className="size-5" />
+                    <UnreadDot count={cart} />
+                  </Link>
+                </Button>
+              ) : null}
               <Button asChild variant="ghost" size="icon" className="relative">
                 <Link to="/notifications" aria-label="Notifications">
                   <BellIcon className="size-5" />

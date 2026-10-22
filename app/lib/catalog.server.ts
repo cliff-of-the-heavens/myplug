@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, gt, ilike, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
 import type { ProductKind, PromotionTier } from "~/db/schema";
 import { cached } from "./cache.server";
+import { saleColumns } from "./pricing.server";
 import { liveAd } from "./ads.server";
 import { TIER_WEIGHT } from "./promotions";
 
@@ -52,6 +53,7 @@ const cardColumns = {
   quantity: products.quantity,
   trackStock: products.trackStock,
   kind: products.kind,
+  ...saleColumns(products.id, products.storeId), // live sale: salePct, saleEndsAt
   imageUrl: sql<string | null>`case when ${products.imageHidden} then null else ${products.imageUrl} end`,
   storeName: stores.name,
   storeSlug: stores.slug,
@@ -106,6 +108,7 @@ export async function searchProducts(opts: {
   q?: string;
   categorySlug?: string;
   storeId?: string;
+  ids?: string[];
   kind?: ProductKind;
   inStockOnly?: boolean;
   sort?: SortKey;
@@ -123,6 +126,7 @@ export async function searchProducts(opts: {
   }
   if (opts.storeId) filters.push(eq(products.storeId, opts.storeId));
   if (opts.kind) filters.push(eq(products.kind, opts.kind));
+  if (opts.ids) filters.push(inArray(products.id, opts.ids));
   if (opts.inStockOnly) filters.push(inStock);
 
   const order = {

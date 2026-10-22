@@ -17,6 +17,7 @@ import { nextStatuses, OrderError, updateOrderStatus } from "~/lib/orders.server
 import { deliveryLogFor, inviteStoreCourier, releaseItem, setPickupTime, verifyCollector } from "~/lib/delivery.server";
 import { notify } from "~/lib/notify.server";
 import { activateGrantForOrder } from "~/lib/digital.server";
+import { activateCouponForOrder } from "~/lib/coupons.server";
 import { PickupPanel } from "~/components/pickup-panel";
 import { str } from "~/lib/utils";
 import type { Route } from "./+types/sell.order";
@@ -134,6 +135,7 @@ export async function action({ request, params }: Route.ActionArgs) {
       .set({ status: "paid", paidAt: new Date(), paymentReference: str(form.get("reference")) || null })
       .where(billWhere("unpaid", "overdue"));
     await activateGrantForOrder(order.id, user.id); // digital purchases: access starts on payment
+    await activateCouponForOrder(order.id, user.id); // gift coupon purchases: the coupon goes live
     await notify([order.customerId], { title: `Payment for order ${order.number} confirmed`, href: `/account/orders/${order.id}` });
     return { ok: true };
   }
@@ -272,10 +274,22 @@ export default function SellOrder({ loaderData, actionData }: Route.ComponentPro
                     <span className="font-semibold">{money(i.unitPriceCents * i.quantity, order.currency)}</span>
                   </li>
                 ))}
+                {order.discountCents ? (
+                <li className="flex justify-between pt-2 text-success">
+                  <span>Promo {order.promoCode}</span>
+                  <span>-{money(order.discountCents, order.currency)}</span>
+                </li>
+              ) : null}
                 <li className="flex justify-between pt-2 font-extrabold">
                   <span>Total</span>
                   <span>{money(order.totalCents, order.currency)}</span>
                 </li>
+                {order.couponCents ? (
+                <li className="flex justify-between pt-1 text-success">
+                  <span>Paid with gift coupon</span>
+                  <span>-{money(order.couponCents, order.currency)}</span>
+                </li>
+              ) : null}
               </ul>
               {order.notes ? <p className="mt-4 rounded-lg bg-muted p-3 text-sm">Customer note: {order.notes}</p> : null}
             </CardContent>

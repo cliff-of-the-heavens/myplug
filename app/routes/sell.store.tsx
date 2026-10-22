@@ -11,7 +11,7 @@ import { storeDeliveryMode, type StoreDeliveryMode } from "~/db/schema";
 import { availableCouriers } from "~/lib/delivery.server";
 import { db, schema } from "~/db/client.server";
 import { requireMerchant } from "~/lib/auth.server";
-import { CURRENCIES, DEFAULT_CURRENCY, isCurrency } from "~/lib/format";
+import { currencyName } from "~/lib/format";
 import { uploadImage, UploadError } from "~/lib/upload.server";
 import { cn, isUuid, str } from "~/lib/utils";
 import type { Route } from "./+types/sell.store";
@@ -32,8 +32,6 @@ export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   const name = str(form.get("name"));
   if (name.length < 2) return { error: "Store name is too short." };
-  const currency = form.get("currency");
-  if (!isCurrency(currency)) return { error: "Choose a currency." };
   const deliveryMode = str(form.get("deliveryMode")) as StoreDeliveryMode;
   if (!storeDeliveryMode.enumValues.includes(deliveryMode)) return { error: "Choose who delivers your orders." };
   const courierId = str(form.get("preferredCourierId"));
@@ -52,7 +50,6 @@ export async function action({ request }: Route.ActionArgs) {
     .update(schema.stores)
     .set({
       name,
-      currency,
       description: str(form.get("description")) || null,
       deliveryMode,
       preferredCourierId: deliveryMode === "merchant_courier" ? courierId : null,
@@ -99,18 +96,9 @@ export default function StoreSettings({ loaderData, actionData }: Route.Componen
             <Field label="About your store">
               <Textarea name="description" rows={4} defaultValue={store.description ?? ""} />
             </Field>
-            <Field
-              label="Currency"
-              hint="All your prices are shown in this currency. Changing it relabels your prices without converting them, so update them afterwards. Existing orders keep the currency they were placed in."
-            >
-              <NativeSelect name="currency" defaultValue={store.currency ?? DEFAULT_CURRENCY}>
-                {CURRENCIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} · {c.name} ({c.symbol})
-                  </option>
-                ))}
-              </NativeSelect>
-            </Field>
+            <p className="rounded-lg bg-muted px-3 py-2 text-sm">
+              Currency: <strong>{currencyName(store.currency)}</strong>. Set by MyPlug; contact support to change it.
+            </p>
             <fieldset className="grid gap-2">
               <legend className="mb-1 text-sm font-semibold">Who delivers your orders?</legend>
               {(

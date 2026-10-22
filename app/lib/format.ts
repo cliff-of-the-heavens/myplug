@@ -23,6 +23,11 @@ export function isCurrency(code: unknown): code is CurrencyCode {
   return CURRENCIES.some((c) => c.code === code);
 }
 
+export function currencyName(code: string) {
+  const c = CURRENCIES.find((x) => x.code === code);
+  return c ? `${c.name} (${c.code})` : code;
+}
+
 export function currencySymbol(code: string) {
   return CURRENCIES.find((c) => c.code === code)?.symbol ?? code;
 }

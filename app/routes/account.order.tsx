@@ -245,10 +245,22 @@ export default function OrderDetail({ loaderData, actionData }: Route.ComponentP
                   <span className="font-semibold">{money(i.unitPriceCents * i.quantity, order.currency)}</span>
                 </li>
               ))}
+              {order.discountCents ? (
+                <li className="flex justify-between pt-2 text-success">
+                  <span>Promo {order.promoCode}</span>
+                  <span>-{money(order.discountCents, order.currency)}</span>
+                </li>
+              ) : null}
               <li className="flex justify-between pt-3 font-extrabold">
                 <span>Total</span>
                 <span>{money(order.totalCents, order.currency)}</span>
               </li>
+              {order.couponCents ? (
+                <li className="flex justify-between pt-1 text-success">
+                  <span>Paid with gift coupon</span>
+                  <span>-{money(order.couponCents, order.currency)}</span>
+                </li>
+              ) : null}
             </ul>
             {order.notes ? <p className="mt-4 rounded-lg bg-muted p-3 text-sm">Your note: {order.notes}</p> : null}
           </CardContent>

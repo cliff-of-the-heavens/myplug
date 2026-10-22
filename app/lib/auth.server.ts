@@ -9,7 +9,8 @@ if (!secret || secret.length < 32) {
   throw new Error("SESSION_SECRET must be set and at least 32 characters long.");
 }
 
-const sessionStorage = createCookieSessionStorage<{ userId: string }, { flash: string }>({
+// issuedAt: when this sign-in happened, so changing the password can sign out older sessions.
+const sessionStorage = createCookieSessionStorage<{ userId: string; issuedAt: number }, { flash: string }>({
   cookie: {
     name: "__myplug",
     httpOnly: true,
@@ -60,18 +61,20 @@ export async function getUser(request: Request): Promise<SessionUser | null> {
 
   const row = await db.query.users.findFirst({
     where: eq(schema.users.id, userId),
-    columns: { id: true, email: true, name: true, role: true, status: true, lastActiveAt: true, termsVersion: true },
+    columns: { id: true, email: true, name: true, role: true, status: true, lastActiveAt: true, termsVersion: true, passwordChangedAt: true },
     with: {
       store: { columns: { id: true, slug: true, currency: true, status: true } },
       courier: { columns: { id: true, status: true } },
     },
   });
   if (!row || row.status !== "active") return null;
+  // Signed in before the password was last changed (e.g. on a lost phone): no longer valid.
+  if (row.passwordChangedAt && (session.get("issuedAt") ?? 0) < row.passwordChangedAt.getTime()) return null;
 
   // Activity keeps stores from being archived as inactive; record it at most every few hours.
   if (Date.now() - row.lastActiveAt.getTime() > ACTIVITY_INTERVAL_MS) await touchActivity(row.id);
 
-  const { store, courier, lastActiveAt: _, ...user } = row;
+  const { store, courier, lastActiveAt: _, passwordChangedAt: __, ...user } = row;
   return {
     ...user,
     storeId: store?.id ?? null,
@@ -138,12 +141,24 @@ export async function requireAdmin(request: Request) {
 export async function createUserSession(request: Request, userId: string, redirectTo: string) {
   const session = await getSession(request);
   session.set("userId", userId);
+  session.set("issuedAt", Date.now());
   return redirect(safeRedirect(redirectTo), {
     headers: { "Set-Cookie": await sessionStorage.commitSession(session) },
   });
 }
 
 export type Flash = { tone: "success" | "warning"; text: string };
+
+/**
+ * Keeps the current session valid after its own password change (which signs out every session
+ * started before it), then redirects with a one-time message.
+ */
+export async function refreshSession(request: Request, to: string, flash: Flash) {
+  const session = await getSession(request);
+  session.set("issuedAt", Date.now());
+  session.flash("flash", JSON.stringify(flash));
+  return redirect(to, { headers: { "Set-Cookie": await sessionStorage.commitSession(session) } });
+}
 
 /** Redirects and shows a one-time message on the next page (kept in the session, not the URL). */
 export async function redirectWithFlash(request: Request, to: string, flash: Flash) {
