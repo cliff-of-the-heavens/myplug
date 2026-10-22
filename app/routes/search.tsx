@@ -6,6 +6,8 @@ import { NativeSelect } from "~/components/ui/input";
 import type { ProductKind } from "~/db/schema";
 import { getCategories, searchProducts, type SortKey } from "~/lib/catalog.server";
 import { cn } from "~/lib/utils";
+import { BannerSlot } from "~/components/banner-ads";
+import { pageBanners } from "~/lib/banners.server";
 import type { Route } from "./+types/search";
 
 const SORTS: { value: SortKey; label: string }[] = [
@@ -39,11 +41,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   const categoryName = categories.find((c) => c.slug === category)?.name;
   const heading = q ? `Results for "${q}"` : (categoryName ?? (kind === "service" ? "Services" : kind === "digital" ? "Digital downloads" : "All products"));
 
-  return { products, categories, q, category, sort, inStock, heading, kind };
+  const banners = await pageBanners(request, ["category_top", "sidebar"]);
+  return { products, categories, q, category, sort, inStock, heading, kind, banners };
 }
 
 export default function Search({ loaderData }: Route.ComponentProps) {
-  const { products, categories, q, category, sort, inStock, heading, kind } = loaderData;
+  const { products, categories, q, category, sort, inStock, heading, kind, banners } = loaderData;
   const submit = useSubmit();
 
   const chip = (slug: string | undefined, label: string) => {
@@ -99,6 +102,8 @@ export default function Search({ loaderData }: Route.ComponentProps) {
         ) : null}
       </Form>
 
+      <BannerSlot ads={banners.category_top} shape="leaderboard" className="mb-6" />
+      <div className={cn("grid gap-6", banners.sidebar?.length && "lg:grid-cols-[1fr_300px]")}>
       {products.length ? (
         <ProductGrid products={products} />
       ) : (
@@ -110,6 +115,8 @@ export default function Search({ loaderData }: Route.ComponentProps) {
           and let merchants find it for you.
         </EmptyState>
       )}
+        <BannerSlot ads={banners.sidebar} shape="sidebar" className="sticky top-36 hidden self-start lg:block" />
+      </div>
     </Container>
   );
 }

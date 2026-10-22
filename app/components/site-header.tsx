@@ -1,5 +1,6 @@
 import {
   BellIcon,
+  EyeOffIcon,
   KeyRoundIcon,
   GiftIcon,
   HeartIcon,
@@ -146,6 +147,11 @@ function AccountMenu({ user }: { user: SessionUser }) {
             <DropdownMenuItem asChild>
               <Link to="/account/coupons">
                 <GiftIcon /> Gift coupons
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/account/ad-free">
+                <EyeOffIcon /> Ad-free browsing
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -369,7 +375,7 @@ export function SiteFooter() {
         <div className="grid content-start gap-2">
           <p className="font-bold">Sell</p>
           <AuthLink mode="register" role="merchant" redirectTo="/sell" className="text-muted-foreground hover:text-primary">Open a store</AuthLink>
-          <Link to="/sell/promote" className="text-muted-foreground hover:text-primary">Advertise your products</Link>
+          <Link to="/advertise" className="text-muted-foreground hover:text-primary">Advertise on MyPlug</Link>
           <AuthLink mode="register" role="courier" redirectTo="/courier/profile" className="text-muted-foreground hover:text-primary">Deliver with MyPlug</AuthLink>
         </div>
         <div className="grid content-start gap-2">

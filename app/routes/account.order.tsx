@@ -17,6 +17,9 @@ import { OrderError } from "~/lib/orders.server";
 import { uploadProof, UploadError } from "~/lib/upload.server";
 import { str } from "~/lib/utils";
 import { findOrCreateConversation } from "~/lib/messaging.server";
+import { CommentBox, StarInput, Stars } from "~/components/rating";
+import type { ReviewTarget } from "~/db/schema";
+import { ReviewError, reviewableForOrder, submitReview } from "~/lib/reviews.server";
 import type { Route } from "./+types/account.order";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -50,7 +53,8 @@ async function loadOrder(customerId: string, id: string) {
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const user = await requireCustomer(request);
-  return { order: await loadOrder(user.id, params.id) };
+  const order = await loadOrder(user.id, params.id);
+  return { order, reviewable: await reviewableForOrder(user.id, order.id) };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -59,6 +63,16 @@ export async function action({ request, params }: Route.ActionArgs) {
   const form = await request.formData();
 
   const intent = form.get("intent");
+  if (intent === "review") {
+    try {
+      const target = str(form.get("target")) as ReviewTarget;
+      await submitReview({ customerId: user.id, orderId: order.id, target, targetId: str(form.get("targetId")), rating: Number(form.get("rating")), comment: String(form.get("comment") ?? "") });
+      return { ok: "Thanks for your rating!", reviewed: `${target}:${str(form.get("targetId"))}` };
+    } catch (e) {
+      if (e instanceof ReviewError) return { error: e.message, reviewed: `${str(form.get("target"))}:${str(form.get("targetId"))}` };
+      throw e;
+    }
+  }
   if (intent === "accept-quote" || intent === "approve-pickup" || intent === "refuse-pickup") {
     try {
       if (intent === "accept-quote") await acceptQuote(user.id, str(form.get("quoteId")));
@@ -151,6 +165,7 @@ export default function OrderDetail({ loaderData, actionData }: Route.ComponentP
       />
 
       <div className="grid gap-6">
+        {loaderData.reviewable?.length ? <RateOrder targets={loaderData.reviewable} result={actionData?.reviewed ? { reviewed: actionData.reviewed, ok: actionData.ok, error: actionData.error } : null} /> : null}
         <Card>
           <CardHeader className="flex-row items-center justify-between">
             <CardTitle>Tracking</CardTitle>
@@ -211,8 +226,8 @@ export default function OrderDetail({ loaderData, actionData }: Route.ComponentP
                 {order.bill.paymentReference ? (
                   <p><span className="text-muted-foreground">Reference:</span> {order.bill.paymentReference}</p>
                 ) : null}
-                {actionData && "ok" in actionData ? <p className="font-medium text-success">{actionData.ok}</p> : null}
-                <FormError error={actionData && "error" in actionData ? actionData.error : null} />
+                {actionData && "ok" in actionData && !actionData.reviewed ? <p className="font-medium text-success">{actionData.ok}</p> : null}
+                <FormError error={actionData && "error" in actionData && !actionData.reviewed ? actionData.error : null} />
                 {canReportPayment && bill.submittedAt ? (
                   <p className="rounded-lg bg-muted p-2">
                     You reported this payment {timeAgo(bill.submittedAt)}
@@ -267,5 +282,64 @@ export default function OrderDetail({ loaderData, actionData }: Route.ComponentP
         </Card>
       </div>
     </Container>
+  );
+}
+
+const TARGET_LABEL: Record<ReviewTarget, string> = { product: "Item", store: "Seller", courier: "Courier" };
+
+/** Rate each item, the seller and the courier once the order has been delivered. */
+function RateOrder({
+  targets,
+  result,
+}: {
+  targets: NonNullable<Route.ComponentProps["loaderData"]["reviewable"]>;
+  result: { reviewed: string; ok?: string; error?: string } | null;
+}) {
+  const pending = targets.filter((t) => !t.review).length;
+  return (
+    <Card className="border-amber-300/60">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Rate your order
+          {pending ? <span className="text-sm font-normal text-muted-foreground">{pending} still to rate</span> : null}
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">Your first name and rating are shown publicly. Rude words are hidden automatically.</p>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {targets.map((t) => {
+          const key = `${t.target}:${t.id}`;
+          const mine = result?.reviewed === key ? result : null;
+          return (
+            <details key={key} open={!t.review || !!mine?.error} className="rounded-xl border p-3">
+              <summary className="flex cursor-pointer items-center gap-2">
+                <span className="text-xs font-semibold text-muted-foreground uppercase">{TARGET_LABEL[t.target]}</span>
+                <span className="flex-1 font-semibold">{t.name}</span>
+                {t.review ? (
+                  <>
+                    <Stars value={t.review.rating} size="size-3.5" />
+                    {t.review.status === "hidden" ? <span className="text-xs text-destructive">removed by admin</span> : <span className="text-xs text-muted-foreground">edit</span>}
+                  </>
+                ) : null}
+              </summary>
+              <Form method="post" className="mt-3 grid gap-3" key={`${key}-${t.review?.updatedAt ?? "new"}`}>
+                <input type="hidden" name="intent" value="review" />
+                <input type="hidden" name="target" value={t.target} />
+                <input type="hidden" name="targetId" value={t.id} />
+                {mine?.error ? <FormError error={mine.error} /> : null}
+                {mine?.ok ? <p className="text-sm font-semibold text-success">{mine.ok}</p> : null}
+                <StarInput defaultValue={t.review?.rating ?? 0} />
+                <CommentBox
+                  defaultValue={t.review?.comment ?? ""}
+                  placeholder={t.target === "courier" ? "Was the delivery on time? Were they polite?" : t.target === "store" ? "How was the service and communication?" : "What did you like or dislike?"}
+                />
+                <Button type="submit" size="sm" className="justify-self-start">
+                  {t.review ? "Update rating" : "Submit rating"}
+                </Button>
+              </Form>
+            </details>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }

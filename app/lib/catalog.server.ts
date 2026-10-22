@@ -2,11 +2,21 @@ import { and, asc, desc, eq, gt, ilike, inArray, or, sql, type SQL } from "drizz
 import { db, schema } from "~/db/client.server";
 import type { ProductKind, PromotionTier } from "~/db/schema";
 import { cached } from "./cache.server";
+import { qualified } from "~/db/sql";
 import { saleColumns } from "./pricing.server";
 import { liveAd } from "./ads.server";
 import { TIER_WEIGHT } from "./promotions";
 
-const { products, stores, promotions, categories } = schema;
+const { products, stores, promotions, categories, reviews } = schema;
+
+/** A product's average star rating and number of reviews (taken-down reviews don't count). */
+function ratingColumns(productId: typeof products.id) {
+  const of = sql`from ${reviews} where ${qualified(reviews.productId)} = ${qualified(productId)} and ${qualified(reviews.status)} <> 'hidden'`;
+  return {
+    ratingAvg: sql<number | null>`(select avg(${qualified(reviews.rating)}) ${of})`.mapWith((v) => (v == null ? null : Number(v))),
+    ratingCount: sql<number>`(select count(*) ${of})`.mapWith(Number),
+  };
+}
 
 function tierFromWeight(weight: number | null): PromotionTier | null {
   if (!weight) return null;
@@ -54,7 +64,9 @@ const cardColumns = {
   trackStock: products.trackStock,
   kind: products.kind,
   ...saleColumns(products.id, products.storeId), // live sale: salePct, saleEndsAt
+  ...ratingColumns(products.id),
   imageUrl: sql<string | null>`case when ${products.imageHidden} then null else ${products.imageUrl} end`,
+  storeId: products.storeId,
   storeName: stores.name,
   storeSlug: stores.slug,
   currency: stores.currency,
@@ -80,16 +92,36 @@ function toCards(rows: Awaited<ReturnType<typeof baseQuery>>): ProductCardData[]
   return rows.map(({ promoWeight, ...r }) => ({ ...r, promoTier: tierFromWeight(promoWeight) }));
 }
 
-/** Randomised storefront feed, prioritising paid promotions. */
-export async function getFeed(limit = 24, where?: SQL) {
-  return toCards(await baseQuery(where).orderBy(weightedRandom).limit(limit));
+/**
+ * Keeps one merchant from filling a listing. Rows arrive in weighted-random order; they're
+ * dealt out in rounds, taking at most `perRound` products from each store per round. Every
+ * store's best-weighted products (paid ones tend to be first) lead each round, so ads still
+ * win, but a store with many products or many boosts can't crowd out the others.
+ */
+export function diversify<T extends { storeId: string }>(rows: T[], perRound: number, limit: number) {
+  const byStore = new Map<string, T[]>();
+  for (const r of rows) byStore.set(r.storeId, [...(byStore.get(r.storeId) ?? []), r]);
+  const queues = [...byStore.values()]; // stores in the order their best product was drawn
+  const out: T[] = [];
+  while (out.length < limit && queues.some((q) => q.length)) {
+    for (const q of queues) out.push(...q.splice(0, perRound));
+  }
+  return out.slice(0, limit);
 }
 
-/** Only products with an active paid promotion, randomised. */
+/** How many candidates to draw before spreading them across stores. */
+const OVERDRAW = 4;
+
+/** Randomised storefront feed, prioritising paid promotions, spread across merchants. */
+export async function getFeed(limit = 24, where?: SQL) {
+  const rows = await baseQuery(where).orderBy(weightedRandom).limit(limit * OVERDRAW);
+  return toCards(diversify(rows, 2, limit));
+}
+
+/** Only products with an active paid promotion: one per store per round, so every advertiser shows. */
 export async function getSponsored(limit = 8) {
-  return toCards(
-    await baseQuery(sql`${activePromo.weight} is not null`).orderBy(weightedRandom).limit(limit),
-  );
+  const rows = await baseQuery(sql`${activePromo.weight} is not null`).orderBy(weightedRandom).limit(limit * OVERDRAW * 2);
+  return toCards(diversify(rows, 1, limit));
 }
 
 export async function getDeals(limit = 8) {
@@ -98,7 +130,8 @@ export async function getDeals(limit = 8) {
       and(inStock, sql`${products.compareAtCents} > ${products.priceCents}`),
     )
       .orderBy(weightedRandom)
-      .limit(limit),
+      .limit(limit * OVERDRAW)
+      .then((rows) => diversify(rows, 2, limit)),
   );
 }
 
@@ -136,11 +169,14 @@ export async function searchProducts(opts: {
     newest: desc(products.createdAt),
   }[opts.sort ?? "featured"];
 
-  return toCards(
-    await baseQuery(and(...filters))
-      .orderBy(order)
-      .limit(opts.limit ?? 60),
-  );
+  const limit = opts.limit ?? 60;
+  // "Featured" across many stores is spread out like the feed; price/newest sorts and a single
+  // store's own page keep their exact order.
+  const spread = (opts.sort ?? "featured") === "featured" && !opts.storeId && !opts.ids;
+  const rows = await baseQuery(and(...filters))
+    .orderBy(order)
+    .limit(spread ? limit * OVERDRAW : limit);
+  return toCards(spread ? diversify(rows, 3, limit) : rows);
 }
 
 /** Read on every page (header), so cached briefly per server instance. */

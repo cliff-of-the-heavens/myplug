@@ -9,6 +9,7 @@ import {
   ShieldCheckIcon,
   ShoppingBagIcon,
   SparklesIcon,
+  StarIcon,
   StoreIcon,
   WandSparklesIcon,
 } from "lucide-react";
@@ -48,7 +49,12 @@ import { listAddresses } from "~/lib/addresses.server";
 import { publicBusinessInfo } from "~/lib/business.server";
 import { availableCouriers, createDeliveryTx, deliveryFromForm, notifyInvitedCouriers, usualCouriers } from "~/lib/delivery.server";
 import { notify } from "~/lib/notify.server";
-import { cn, str } from "~/lib/utils";
+import { cn, isUuid, str } from "~/lib/utils";
+import { Card, CardContent } from "~/components/ui/card";
+import { RatingBadge, RatingSummary, ReviewList, Stars } from "~/components/rating";
+import { listReviews, ratingSummary } from "~/lib/reviews.server";
+import { BannerSlot } from "~/components/banner-ads";
+import { pageBanners } from "~/lib/banners.server";
 import type { Route } from "./+types/product";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -56,6 +62,7 @@ export function meta({ data }: Route.MetaArgs) {
 }
 
 async function loadProduct(id: string) {
+  if (!isUuid(id)) return undefined; // a mistyped link is "not found", not a database error
   return db.query.products.findFirst({
     where: eq(schema.products.id, id),
     columns: { mediaKey: false }, // the purchased file is private; it never goes to the browser
@@ -115,7 +122,13 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const sales = (await liveSalesFor(product.storeId)).filter((d) => d.allProducts || d.products.some((p) => p.productId === product.id));
   const best = sales.sort((a, b) => (b.percentOff ?? 0) - (a.percentOff ?? 0))[0];
   const sale = best?.percentOff ? { pct: best.percentOff, endsAt: best.endsAt, name: best.name } : null;
-  return { product, related, isOwner, follow, booking, checkout, business, digital, sale };
+  const [ratings, reviewList, storeRating] = await Promise.all([
+    ratingSummary("product", product.id),
+    listReviews("product", product.id),
+    ratingSummary("store", product.storeId),
+  ]);
+  const banners = await pageBanners(request, ["sidebar"]);
+  return { product, related, isOwner, follow, booking, checkout, business, digital, sale, ratings, reviewList, storeRating, banners };
 }
 
 const CALENDAR_DAYS = 63; // nine weeks ahead
@@ -523,10 +536,18 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
               <FavouriteButton productId={product.id} className="mt-1" />
               <ShareButton path={`/p/${product.id}`} title={product.title} text={`${product.title} on MyPlug`} />
             </div>
+            {loaderData.ratings.total ? (
+              <a href="#reviews" className="flex w-fit items-center gap-2 text-sm hover:underline">
+                <Stars value={loaderData.ratings.average} />
+                <span className="font-semibold">{loaderData.ratings.average.toFixed(1)}</span>
+                <span className="text-muted-foreground">({loaderData.ratings.total} rating{loaderData.ratings.total === 1 ? "" : "s"})</span>
+              </a>
+            ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <Link to={`/s/${product.store.slug}`} className="flex w-fit items-center gap-1.5 text-sm font-semibold text-accent hover:underline">
                 <StoreIcon className="size-4" /> {product.store.name}
               </Link>
+              <RatingBadge average={loaderData.storeRating.average} total={loaderData.storeRating.total} />
               <BusinessBadge storeName={product.store.name} info={loaderData.business} />
               {!isOwner ? (
                 <FollowStoreButton storeId={product.store.id} storeName={product.store.name} follow={follow} className="h-8 px-3 text-xs" />
@@ -641,6 +662,24 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className={cn("mt-12 grid gap-6", loaderData.banners.sidebar?.length && "lg:grid-cols-[1fr_300px]")}>
+      <section id="reviews" className="grid scroll-mt-20 content-start gap-4">
+        <h2 className="flex items-center gap-2 text-xl font-extrabold">
+          <StarIcon className="size-5 text-amber-400" /> Ratings & reviews
+        </h2>
+        <Card>
+          <CardContent className="grid gap-4 pt-5">
+            <RatingSummary summary={loaderData.ratings} />
+            <ReviewList reviews={loaderData.reviewList} />
+            <p className="text-xs text-muted-foreground">
+              Only customers whose order was delivered can rate. Bought this? Rate it from your order page.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+        <BannerSlot ads={loaderData.banners.sidebar} shape="sidebar" className="sticky top-36 hidden self-start lg:block" />
       </div>
 
       {related.length ? (

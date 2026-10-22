@@ -4,6 +4,7 @@ import type { ProductCardData } from "~/lib/catalog.server";
 import { money, stockLabel } from "~/lib/format";
 import { cn } from "~/lib/utils";
 import { DealCountdown, priceDisplay } from "./price";
+import { RatingBadge } from "./rating";
 import { SafeImage } from "./safe-image";
 import { FavouriteButton } from "./shopping";
 import { Badge } from "./ui/badge";
@@ -56,7 +57,10 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
       </div>
       <div className="flex flex-1 flex-col gap-1 p-3">
         <p className="line-clamp-2 text-sm font-medium leading-snug group-hover:text-primary">{product.title}</p>
-        <p className="text-xs text-muted-foreground">{product.storeName}</p>
+        <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          {product.storeName}
+          <RatingBadge average={product.ratingAvg} total={product.ratingCount} />
+        </p>
         <div className="mt-auto flex items-baseline gap-2 pt-1">
           {product.kind !== "product" ? <span className="text-xs text-muted-foreground">from</span> : null}
           <span className="text-lg font-extrabold">{money(price.now, product.currency)}</span>

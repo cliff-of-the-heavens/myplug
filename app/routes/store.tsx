@@ -18,6 +18,9 @@ import { publicBusinessInfo } from "~/lib/business.server";
 import { liveSalesFor } from "~/lib/pricing.server";
 import { searchProducts } from "~/lib/catalog.server";
 import { date } from "~/lib/format";
+import { Card, CardContent } from "~/components/ui/card";
+import { RatingSummary, ReviewList, Stars } from "~/components/rating";
+import { listReviews, ratingSummary } from "~/lib/reviews.server";
 import type { Route } from "./+types/store";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -38,11 +41,12 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   ]);
   const { reviewNote, alertsBlocked, ...publicStore } = store; // admin-only fields stay on the server
   const sales = (await liveSalesFor(store.id)).map((d) => ({ id: d.id, name: d.name, percentOff: d.percentOff, allProducts: d.allProducts, endsAt: d.endsAt }));
-  return { store: publicStore, products, follow, business, sales };
+  const [ratings, reviewList] = await Promise.all([ratingSummary("store", store.id), listReviews("store", store.id)]);
+  return { store: publicStore, products, follow, business, sales, ratings, reviewList };
 }
 
 export default function StorePage({ loaderData }: Route.ComponentProps) {
-  const { store, products, follow, business, sales } = loaderData;
+  const { store, products, follow, business, sales, ratings, reviewList } = loaderData;
   return (
     <>
       <div className="brand-gradient h-32 md:h-44" />
@@ -57,7 +61,13 @@ export default function StorePage({ loaderData }: Route.ComponentProps) {
             <h1 className="flex flex-wrap items-center gap-2 text-2xl font-extrabold tracking-tight md:text-3xl">
               {store.name} <BusinessBadge storeName={store.name} info={business} />
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+              {ratings.total ? (
+                <a href="#reviews" className="flex items-center gap-1 hover:underline">
+                  <Stars value={ratings.average} size="size-3.5" />
+                  <span className="font-semibold text-foreground">{ratings.average.toFixed(1)}</span> ({ratings.total})
+                </a>
+              ) : null}
               {products.length} products · on MyPlug since {date(store.createdAt)}
             </p>
           </div>
@@ -91,6 +101,15 @@ export default function StorePage({ loaderData }: Route.ComponentProps) {
             This store hasn't listed anything yet. Check back soon!
           </EmptyState>
         )}
+        <section id="reviews" className="mt-6 grid scroll-mt-20 gap-3">
+          <h2 className="text-xl font-extrabold">What customers say about {store.name}</h2>
+          <Card>
+            <CardContent className="grid gap-4 pt-5">
+              <RatingSummary summary={ratings} />
+              <ReviewList reviews={reviewList} />
+            </CardContent>
+          </Card>
+        </section>
       </Container>
     </>
   );

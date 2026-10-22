@@ -110,6 +110,7 @@ export function ImageDropzone({
   className,
   imgClassName = "size-full object-cover",
   types = IMAGE_TYPES,
+  onFile,
 }: {
   name?: string;
   required?: boolean;
@@ -120,6 +121,8 @@ export function ImageDropzone({
   className?: string;
   imgClassName?: string;
   types?: string[];
+  /** Called with the chosen (or dropped) file, e.g. to check it before upload. */
+  onFile?: (file: File | null) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [preview, show] = useFilePreview(defaultPreview);
@@ -130,6 +133,7 @@ export function ImageDropzone({
       const isImage = !file || file.type.startsWith("image/");
       setDocument(isImage ? null : file.name);
       show(isImage ? file : null);
+      onFile?.(file);
     },
     types,
   );

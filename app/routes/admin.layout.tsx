@@ -3,9 +3,11 @@ import {
   BikeIcon,
   FlagIcon,
   HardDriveIcon,
+  ImageIcon,
   LayoutDashboardIcon,
   MegaphoneIcon,
   SettingsIcon,
+  StarIcon,
   StoreIcon,
   UsersIcon,
 } from "lucide-react";
@@ -28,10 +30,12 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
     { to: "/admin/merchants", label: "Merchants", icon: StoreIcon, badge: counts.pendingMerchants + counts.pendingLicenses },
     { to: "/admin/couriers", label: "Couriers", icon: BikeIcon, badge: counts.pendingCouriers },
     { to: "/admin/customers", label: "Customers", icon: UsersIcon },
-    { to: "/admin/ads", label: "Adverts", icon: MegaphoneIcon, end: true, badge: counts.adsToQuote + counts.paymentsToVerify },
-    { to: "/admin/ads/settings", label: "Bands & payment", icon: SettingsIcon },
+    { to: "/admin/ads", label: "Product boosts", icon: MegaphoneIcon, end: true, badge: counts.adsToQuote + counts.paymentsToVerify },
+    { to: "/admin/ads/settings", label: "Boost bands & payment", icon: SettingsIcon },
+    { to: "/admin/banners", label: "Banner ads", icon: ImageIcon, badge: counts.banners },
     { to: "/admin/alerts", label: "Email alerts", icon: BellRingIcon },
     { to: "/admin/moderation", label: "Moderation", icon: FlagIcon, badge: counts.openReports },
+    { to: "/admin/reviews", label: "Reviews", icon: StarIcon, badge: counts.flaggedReviews },
     { to: "/admin/system", label: "System settings", icon: HardDriveIcon },
   ];
 

@@ -45,6 +45,14 @@ Tailwind v4 + shadcn/ui components · Vercel Blob for images · deployed on Verc
 | 33 | Favourites and shopping cart | `favourites`, `cart_items`; hearts on cards, `/account/favourites`, `/cart`, per-store checkout |
 | 34 | Deals: timed, end-of-month, store-wide, per item; promo codes | `deals`, `deal_products`; Seller → Deals & promo codes |
 | 35 | Gift coupons bought from a store, shared, spent online or in the shop | `coupons`, `coupon_redemptions`; `/s/:slug/gift`, `/gift/:code`, Seller → Gift coupons |
+| 36 | Ads and the feed shared fairly between merchants | `diversify()` in `app/lib/catalog.server.ts` |
+| 37 | Customers rate and comment on products, merchants and couriers | `reviews`; "Rate your order" on delivered orders, stars on cards, product and store pages |
+| 38 | Merchants/couriers ask an admin to check a review; admin takes it down | Seller → Reviews, `/courier/reviews`, Admin → Reviews |
+| 39 | Obscene-word and swearing filter | `app/lib/profanity.ts`; admin word lists under Admin → Reviews |
+| 40 | Banner ad platform for members and non-members, with billing | `ad_placements`, `ad_campaigns`; `/advertise`, Admin → Banner ads |
+| 41 | Upload link + passcode for outside advertisers | `ad_upload_links`; `/ad-upload/:token` |
+| 42 | Top 5 selling / top rated shops beside the hero (admin's choice) | Admin → Banner ads → Spots, prices & hero panel |
+| 43 | Pay to hide side banners | `ad_free_passes`, `users.ad_free_until`; `/account/ad-free` |
 
 ## Getting started
 
@@ -392,6 +400,72 @@ so every visit gets a fresh shuffle in which paid products appear near the top f
 products still get a fair chance. In testing, a single Premium item among 40 landed in the top 3 about half
 the time (a uniform shuffle would do that about 7% of the time). Tune the weights in `app/lib/promotions.ts`.
 
+**Sharing between merchants.** Weighting alone lets a merchant with many products (or many boosts) fill a
+whole listing. So after the weighted shuffle, `diversify()` deals products out in rounds, taking at most a
+few from each store per round in the order their best product was drawn:
+
+| Listing | Per store per round |
+| --- | --- |
+| Sponsored picks | 1 (every advertiser appears before anyone gets a second slot) |
+| Home feed, Today's deals | 2 |
+| Search / category, "Featured" sort | 3 |
+
+Price and newest sorts, and a store's own page, keep their exact order. Paid products still lead, because
+each store's highest-weighted products come first. In the tests, a store with 30 Premium boosts and two
+stores with one each always shared the first three Sponsored slots.
+
+## Ratings and reviews
+
+- **Who can rate:** only the customer, and only once the order is **delivered**: each item, the seller, and
+  the registered courier who delivered it ("Rate your order" on the order page). Re-rating edits the same
+  review. Public reviews show the first name only and say "verified order".
+- **Where ratings show:** stars and averages on product cards, product pages, store pages, and the
+  merchant's and courier's own Reviews pages.
+- **Merchant replies:** merchants reply publicly under reviews of their store and products.
+- **Asking an admin to check:** merchants and couriers can ask an admin to check a review ("fake", "abusive",
+  "competitor"). The review stays visible until an admin decides. **Admin → Reviews** lists flagged reviews
+  first, with *Take down*, *Keep it up* and *Put back up*. The customer, merchant or courier are told the
+  outcome. Taken-down reviews stop counting everywhere, and editing doesn't bring them back.
+- **Obscene words:** words in comments and replies are masked before saving ("s***"). The filter catches
+  disguised spellings ("sh1t", "f.u.c.k", "fuuuck") but matches whole words only, so "class", "Scunthorpe"
+  and "assess" are safe. Admins add local-language words and allow wrongly caught ones under
+  **Admin → Reviews**. The comment box warns as you type.
+
+## Banner ads (members and non-members)
+
+Separate from product boosts: an advertiser's own designed banner in a fixed spot. The spots are seeded in
+migration `0008` and editable under **Admin → Banner ads → Spots, prices & hero panel**:
+
+| Spot | Size | Max file | Weekly (MWK) | Ad-free pass hides it |
+| --- | --- | --- | --- | --- |
+| Home page hero (rotates with MyPlug's own slide) | 1600 × 640 | 600 KB | 150,000 | no |
+| Home page banner strip | 1600 × 300 | 400 KB | 60,000 | yes |
+| Search & category banner | 1200 × 200 | 300 KB | 50,000 | yes |
+| Side banner (computers and tablets only) | 300 × 600 | 300 KB | 40,000 | yes |
+
+**Not intrusive by design:** no pop-ups, full-screen ads, ads inside checkout, auto-playing video or sound.
+At most one banner shows per screen, every banner is labelled "Ad", and empty spots take up no space. Each
+spot rotates up to *Ads at once* advertisers in random order, so they get an even share.
+
+- **Members** (`/advertise`): pick a spot, weeks and start date, and upload the banner. The page lists exact
+  sizes, prices and preparation tips, and checks the image in the browser. The server checks it again: format,
+  file size, shape within 8%, and at least 75% of the width. The admin confirms the price (or adjusts it),
+  the member pays and submits the reference or proof, and the admin approves with a start date.
+- **Non-members** email the address shown on the Advertise page (set by the admin). The admin enters the
+  ad under **Admin → Banner ads → New ad for a non-member** and either uploads the banner themselves or
+  emails a **one-time upload link** (valid 14 days) protected by a **6-digit passcode**. The passcode is
+  shown to the admin once, best given by phone or SMS; it can be included in the email instead. The link
+  locks after 5 wrong passcodes and stops working once used. The admin records the payment reference and
+  approves.
+- **Approval** needs a banner and a payment reference. It's refused if the spot already has its maximum
+  number of ads on those dates, and the message says when a slot frees up. Clicks go through `/ad/:id` and
+  are counted.
+- **Beside the hero:** the admin chooses *Top 5 selling shops this week* (most orders in 7 days), *Top 5
+  rated shops* (ranked by a weighted average, so one lucky 5-star doesn't win), or nothing.
+- **Ad-free browsing** (`/account/ad-free`): signed-in users pay to hide the strip, search and side banners
+  for 1 month, 3 months (10% off) or 1 year (2 months free). The admin sets the monthly price and confirms
+  payments under **Admin → Banner ads → Ad-free passes**. The hero and "Sponsored" product labels stay.
+
 ## Reporting & taking down inappropriate images
 
 What's built in:
@@ -430,5 +504,5 @@ Recommended additions before launch:
   admin from proofs. A payment provider webhook could approve adverts automatically.
 - Email and push notifications for new orders, status changes, messages, store approvals and invoices
   (merchants currently see these when they open the app).
-- A multi-item cart (orders are currently one product at a time), password reset, and profile editing.
+- Profile editing, and ad impressions (banner clicks are counted; views aren't).
 - Real-time chat (Ably, Pusher, or Neon logical replication) instead of 5-second polling.

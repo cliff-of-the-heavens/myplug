@@ -60,3 +60,12 @@ export async function markAllRead(userId: string) {
     .set({ readAt: new Date() })
     .where(and(eq(notifications.userId, userId), isNull(notifications.readAt)));
 }
+
+/** Notifies every active admin (e.g. a review flagged for checking, an ad request). */
+export async function notifyAdmins(notice: Notice, opts: { email?: boolean } = {}) {
+  const admins = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.role, "admin"), eq(users.status, "active")));
+  await notify(admins.map((a) => a.id), notice, opts);
+}

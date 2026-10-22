@@ -18,16 +18,21 @@ import { schema } from "~/db/client.server";
 import { getDeals, getFeed, getServices, getSponsored } from "~/lib/catalog.server";
 import { useOptionalUser } from "~/lib/hooks";
 import type { loader as rootLoader } from "~/root";
+import { BannerSlot, HeroCarousel, TopShopsPanel } from "~/components/banner-ads";
+import { bannerSettings, pageBanners, topShops } from "~/lib/banners.server";
 import type { Route } from "./+types/home";
 
-export async function loader() {
-  const [sponsored, deals, feed, services] = await Promise.all([
+export async function loader({ request }: Route.LoaderArgs) {
+  const settings = await bannerSettings();
+  const [sponsored, deals, feed, services, banners, shops] = await Promise.all([
     getSponsored(10),
     getDeals(10),
     getFeed(30, eq(schema.products.kind, "product")),
     getServices(10),
+    pageBanners(request, ["hero", "home_banner"]),
+    topShops(settings.heroPanel),
   ]);
-  return { sponsored, deals, feed, services };
+  return { sponsored, deals, feed, services, banners, shops, heroPanel: settings.heroPanel };
 }
 
 // The feed is randomised per visit, so don't let CDNs cache it.
@@ -38,7 +43,7 @@ export function headers() {
 function Hero() {
   const user = useOptionalUser();
   return (
-    <section className="brand-gradient relative overflow-hidden rounded-3xl px-6 py-10 text-white md:px-12 md:py-16">
+    <section className="brand-gradient relative h-full overflow-hidden rounded-3xl px-6 py-10 text-white md:px-12 md:py-16">
       <div className="pointer-events-none absolute -top-16 -right-16 size-64 rounded-full bg-highlight/40 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-24 left-1/3 size-72 rounded-full bg-accent/40 blur-3xl" />
       <div className="relative grid max-w-2xl gap-5">
@@ -125,14 +130,17 @@ function Section({
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { sponsored, deals, feed, services } = loaderData;
+  const { sponsored, deals, feed, services, banners, shops, heroPanel } = loaderData;
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const productCategories = root?.categories.filter((c) => c.kind === "product") ?? [];
   const serviceCategories = root?.categories.filter((c) => c.kind === "service") ?? [];
 
   return (
     <Container className="grid gap-10 py-6 md:gap-12 md:py-8">
-      <Hero />
+      <div className={shops.length && heroPanel !== "off" ? "grid gap-4 lg:grid-cols-[1fr_20rem]" : undefined}>
+        <HeroCarousel house={<Hero />} ads={banners.hero ?? []} />
+        {heroPanel !== "off" ? <TopShopsPanel shops={shops} mode={heroPanel} /> : null}
+      </div>
       <Perks />
 
       <Section title="Shop by category">
@@ -153,6 +161,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           ))}
         </div>
       </Section>
+
+      <BannerSlot ads={banners.home_banner} shape="strip" />
 
       <Section title="Book a service" href="/search?kind=service" icon={<PartyPopperIcon className="size-5 text-primary" />}>
         <div className="grid gap-4">
@@ -201,9 +211,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           <MegaphoneIcon className="size-8 text-primary" />
           <h3 className="text-lg font-bold">Selling? Get seen first.</h3>
           <p className="text-sm text-muted-foreground">
-            Boost, Featured and Premium placements put your products at the top of the storefront and search.
+            Boost your products to the top of the storefront, or book a banner on the home page, search or the sides.
           </p>
-          <Link to="/sell/promote" className="text-sm font-semibold text-primary hover:underline">
+          <Link to="/advertise" className="text-sm font-semibold text-primary hover:underline">
             Advertise on MyPlug →
           </Link>
         </div>

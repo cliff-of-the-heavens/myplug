@@ -83,6 +83,12 @@ export const licenseKind = pgEnum("license_kind", ["primary", "other"]);
 export const licenseStatus = pgEnum("license_status", ["pending", "verified", "rejected"]);
 /** Store deals: automatic sales (timed, store-wide or per item) and promo codes entered at checkout. */
 export const dealKind = pgEnum("deal_kind", ["sale", "code"]);
+export const reviewTarget = pgEnum("review_target", ["product", "store", "courier"]);
+/** visible: shown; flagged: the merchant/courier asked an admin to check it (still shown); hidden: taken down. */
+export const reviewVisibility = pgEnum("review_visibility", ["visible", "flagged", "hidden"]);
+/** Banner ad campaigns (distinct from product boosts in "promotions"). */
+export const adCampaignStatus = pgEnum("ad_campaign_status", ["requested", "awaiting_payment", "payment_submitted", "approved", "rejected", "cancelled"]);
+export const passStatus = pgEnum("pass_status", ["requested", "payment_submitted", "approved", "rejected"]);
 export const couponStatus = pgEnum("coupon_status", ["pending", "active", "used", "expired", "void"]);
 
 /** When the customer pays: after delivery (billed with terms) or up front. */
@@ -138,6 +144,7 @@ export const users = pgTable("users", {
   termsVersion: text("terms_version"), // version of the terms of use the user accepted
   termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }),
   passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }), // sessions from before this are signed out
+  adFreeUntil: timestamp("ad_free_until", { withTimezone: true }), // paid to hide side/inline banner ads
   ...timestamps,
 });
 
@@ -616,6 +623,129 @@ export const passwordResets = pgTable(
   (t) => [index("password_resets_user_idx").on(t.userId, t.createdAt)],
 );
 
+/**
+ * A customer's rating (1-5) and comment on a product, store or courier from one of their orders.
+ * targetKey ("product:<id>", "store:<id>", "courier:<id>") makes it one review per thing per order.
+ */
+export const reviews = pgTable(
+  "reviews",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    target: reviewTarget("target").notNull(),
+    targetKey: text("target_key").notNull(),
+    productId: uuid("product_id").references(() => products.id, { onDelete: "cascade" }),
+    storeId: uuid("store_id").references(() => stores.id, { onDelete: "cascade" }),
+    courierId: uuid("courier_id").references((): AnyPgColumn => couriers.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    rating: integer("rating").notNull(),
+    comment: text("comment"), // obscene words are masked before saving
+    status: reviewVisibility("status").notNull().default("visible"),
+    flagReason: text("flag_reason"), // why the merchant/courier asked for it to be checked
+    flaggedById: uuid("flagged_by_id").references(() => users.id, { onDelete: "set null" }),
+    flaggedAt: timestamp("flagged_at", { withTimezone: true }),
+    reply: text("reply"), // the merchant's public reply
+    adminNote: text("admin_note"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [
+    uniqueIndex("reviews_order_target_idx").on(t.orderId, t.targetKey),
+    index("reviews_product_idx").on(t.productId, t.status),
+    index("reviews_store_idx").on(t.storeId, t.status),
+    index("reviews_courier_idx").on(t.courierId, t.status),
+    index("reviews_status_idx").on(t.status),
+  ],
+);
+
+/** Where banner ads can appear, with the creative specs and weekly price (admin-editable). */
+export const adPlacements = pgTable("ad_placements", {
+  key: text("key").primaryKey(), // hero, home_banner, sidebar, category_top
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  width: integer("width").notNull(), // recommended creative size, px
+  height: integer("height").notNull(),
+  maxKb: integer("max_kb").notNull(),
+  formats: text("formats").notNull().default("jpg,png,webp"),
+  weeklyCents: money("weekly_cents").notNull(),
+  maxActive: integer("max_active").notNull().default(3), // ads rotating in this spot at once
+  hideableWithPass: boolean("hideable_with_pass").notNull().default(true), // hidden for ad-free pass holders
+  isActive: boolean("is_active").notNull().default(true),
+  position: integer("position").notNull().default(0),
+});
+
+/** A banner ad booking, from a registered member or an outside advertiser the admin enters. */
+export const adCampaigns = pgTable(
+  "ad_campaigns",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(), // BA-XXXXXX, the payment reference
+    placementKey: text("placement_key")
+      .notNull()
+      .references(() => adPlacements.key),
+    advertiserId: uuid("advertiser_id").references(() => users.id, { onDelete: "set null" }), // registered member
+    advertiserName: text("advertiser_name").notNull(),
+    advertiserEmail: text("advertiser_email").notNull(),
+    advertiserPhone: text("advertiser_phone"),
+    company: text("company"),
+    title: text("title").notNull(), // internal name
+    headline: text("headline"), // short text shown with the image (alt text too)
+    linkUrl: text("link_url"), // where a click goes: a MyPlug page or an external https site
+    creativeUrl: text("creative_url"),
+    creativeWidth: integer("creative_width"),
+    creativeHeight: integer("creative_height"),
+    weeks: integer("weeks").notNull(),
+    requestedStart: date("requested_start", { mode: "string" }),
+    notes: text("notes"), // what the advertiser asked for
+    status: adCampaignStatus("status").notNull().default("requested"),
+    amountCents: money("amount_cents"),
+    paymentReference: text("payment_reference"),
+    proofUrl: text("proof_url"),
+    paymentSubmittedAt: timestamp("payment_submitted_at", { withTimezone: true }),
+    adminNote: text("admin_note"),
+    reviewedById: uuid("reviewed_by_id").references(() => users.id, { onDelete: "set null" }),
+    startsAt: timestamp("starts_at", { withTimezone: true }), // set on approval
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    clicks: integer("clicks").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [index("ad_campaigns_live_idx").on(t.placementKey, t.status, t.startsAt, t.endsAt), index("ad_campaigns_advertiser_idx").on(t.advertiserId)],
+);
+
+/** One-time upload link (plus passcode) sent to an outside advertiser to supply their creative. */
+export const adUploadLinks = pgTable("ad_upload_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  campaignId: uuid("campaign_id")
+    .notNull()
+    .references(() => adCampaigns.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  passcodeHash: text("passcode_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** A paid pass to hide side and in-page banner ads for a number of days. */
+export const adFreePasses = pgTable("ad_free_passes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  number: text("number").notNull().unique(), // AF-XXXXXX
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  days: integer("days").notNull(),
+  amountCents: money("amount_cents").notNull(),
+  status: passStatus("status").notNull().default("requested"),
+  paymentReference: text("payment_reference"),
+  proofUrl: text("proof_url"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Small key/value store for admin-editable platform settings. */
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
@@ -1030,6 +1160,28 @@ export const couponRedemptionsRelations = relations(couponRedemptions, ({ one })
   order: one(orders, { fields: [couponRedemptions.orderId], references: [orders.id] }),
 }));
 
+export const reviewsRelations = relations(reviews, ({ one }) => ({
+  product: one(products, { fields: [reviews.productId], references: [products.id] }),
+  store: one(stores, { fields: [reviews.storeId], references: [stores.id] }),
+  courier: one(couriers, { fields: [reviews.courierId], references: [couriers.id] }),
+  customer: one(users, { fields: [reviews.customerId], references: [users.id] }),
+  order: one(orders, { fields: [reviews.orderId], references: [orders.id] }),
+}));
+
+export const adCampaignsRelations = relations(adCampaigns, ({ one, many }) => ({
+  placement: one(adPlacements, { fields: [adCampaigns.placementKey], references: [adPlacements.key] }),
+  advertiser: one(users, { fields: [adCampaigns.advertiserId], references: [users.id] }),
+  uploadLinks: many(adUploadLinks),
+}));
+
+export const adUploadLinksRelations = relations(adUploadLinks, ({ one }) => ({
+  campaign: one(adCampaigns, { fields: [adUploadLinks.campaignId], references: [adCampaigns.id] }),
+}));
+
+export const adFreePassesRelations = relations(adFreePasses, ({ one }) => ({
+  user: one(users, { fields: [adFreePasses.userId], references: [users.id] }),
+}));
+
 export const productImagesRelations = relations(productImages, ({ one }) => ({
   product: one(products, { fields: [productImages.productId], references: [products.id] }),
 }));
@@ -1136,4 +1288,7 @@ export type MediaType = (typeof mediaType.enumValues)[number];
 export type Delivery = typeof deliveries.$inferSelect;
 export type Deal = typeof deals.$inferSelect;
 export type Coupon = typeof coupons.$inferSelect;
+export type ReviewTarget = (typeof reviewTarget.enumValues)[number];
+export type AdCampaign = typeof adCampaigns.$inferSelect;
+export type AdPlacement = typeof adPlacements.$inferSelect;
 export type ReportTarget = (typeof reportTarget.enumValues)[number];

@@ -57,6 +57,13 @@
       "when": 1792631034287,
       "tag": "0007_password_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792650239323,
+      "tag": "0008_reviews_and_ad_platform",
+      "breakpoints": true
     }
   ]
 }

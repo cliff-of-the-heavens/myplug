@@ -11,6 +11,8 @@ export default [
   route("cart", "routes/cart.tsx"),
   route("cart/checkout/:storeId", "routes/cart.checkout.tsx"),
   route("safety", "routes/safety.tsx"),
+  route("advertise", "routes/advertise.tsx"),
+  route("ad-upload/:token", "routes/ad-upload.tsx"),
   route("terms", "routes/terms.tsx"),
   route("notifications", "routes/notifications.tsx"),
 
@@ -31,10 +33,12 @@ export default [
   route("account/library", "routes/account.library.tsx"),
   route("account/favourites", "routes/account.favourites.tsx"),
   route("account/coupons", "routes/account.coupons.tsx"),
+  route("account/ad-free", "routes/account.ad-free.tsx"),
 
   // Couriers
   route("courier", "routes/courier.tsx"),
   route("courier/profile", "routes/courier.profile.tsx"),
+  route("courier/reviews", "routes/courier.reviews.tsx"),
   route("alerts/unsubscribe", "routes/alerts.unsubscribe.tsx"),
 
   // Image requests board + messaging (customers and merchants)
@@ -60,6 +64,7 @@ export default [
       route("promote", "routes/sell.promote.tsx"),
       route("deals", "routes/sell.deals.tsx"),
       route("coupons", "routes/sell.coupons.tsx"),
+      route("reviews", "routes/sell.reviews.tsx"),
       route("alerts", "routes/sell.alerts.tsx"),
       route("plans", "routes/sell.plans.tsx"),
       route("store", "routes/sell.store.tsx"),
@@ -79,6 +84,10 @@ export default [
       route("alerts", "routes/admin.alerts.tsx"),
       route("system", "routes/admin.system.tsx"),
       route("moderation", "routes/admin.moderation.tsx"),
+      route("reviews", "routes/admin.reviews.tsx"),
+      route("banners", "routes/admin.banners.tsx"),
+      route("banners/settings", "routes/admin.banner-settings.tsx"),
+      route("banners/:id", "routes/admin.banner.tsx"),
     ]),
     route("alerts/:id/preview", "routes/admin.alert-preview.ts"),
   ]),
@@ -93,5 +102,6 @@ export default [
   route("api/cart", "routes/api.cart.ts"),
   route("api/media-upload", "routes/api.media-upload.ts"),
   route("files/:type/:id", "routes/files.ts"),
+  route("ad/:id", "routes/ad.ts"),
   route("media/:grantId", "routes/media.ts"),
 ] satisfies RouteConfig;

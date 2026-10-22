@@ -63,9 +63,14 @@ export default function CourierDashboard({ loaderData, actionData }: Route.Compo
         title="Courier dashboard"
         description={courier.name}
         actions={
-          <Button asChild variant="outline">
-            <Link to="/courier/profile">Profile & prices</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button asChild variant="outline">
+              <Link to="/courier/reviews">My ratings</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/courier/profile">Profile & prices</Link>
+            </Button>
+          </div>
         }
       />
       {courier.status !== "approved" ? (
