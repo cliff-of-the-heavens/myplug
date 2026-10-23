@@ -10,7 +10,9 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Field, Input, NativeSelect, Textarea } from "~/components/ui/input";
 import { db, schema } from "~/db/client.server";
-import { alertType as alertTypeEnum, mediaType as mediaTypeEnum, type AlertType, type MediaType, type ProductKind } from "~/db/schema";
+import { alertType as alertTypeEnum, mediaType as mediaTypeEnum, type AlertType, type ListingType, type MediaType, type PriceType, type ProductKind, type PropertyFeatures } from "~/db/schema";
+import { PropertyFields } from "~/components/property-fields";
+import { featuresFromForm, LISTING_TYPES, needsTitleDeed, PRICE_TYPES } from "~/lib/property";
 import { DigitalError, offersFromForm, saveDigital } from "~/lib/digital.server";
 import { ALERT_NAME } from "~/lib/alerts";
 import { AlertError, getQuota, sendAlert, subscriberCounts } from "~/lib/alerts.server";
@@ -32,8 +34,9 @@ async function ownProduct(storeId: string, id: string) {
   const product = await db.query.products.findFirst({
     where: and(eq(schema.products.id, id), eq(schema.products.storeId, storeId)),
     with: {
-      images: { orderBy: asc(schema.productImages.position), columns: { url: true } },
+      images: { orderBy: asc(schema.productImages.position), columns: { url: true, section: true } },
       offers: { orderBy: asc(schema.digitalOffers.position) },
+      propertyOffers: { columns: { id: true }, limit: 1 },
     },
   });
   if (!product) throw data("Product not found", { status: 404 });
@@ -48,7 +51,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     subscriberCounts(user.storeId),
   ]);
   const requested = new URL(request.url).searchParams.get("kind");
-  const kind: ProductKind = product?.kind ?? (requested === "service" || requested === "digital" ? requested : "product");
+  const kind: ProductKind = product?.kind ?? (requested === "service" || requested === "digital" || requested === "property" ? requested : "product");
   // Large media uploads go straight to Blob when it's the active storage.
   const { backend } = await getStorageSettings();
   const directUploads = resolveBackend(backend) === "blob";
@@ -63,7 +66,7 @@ export async function action({ request, params }: Route.ActionArgs) {
   const form = await request.formData();
 
   const kindValue = str(form.get("kind"));
-  const kind: ProductKind = kindValue === "service" || kindValue === "digital" ? kindValue : "product";
+  const kind: ProductKind = kindValue === "service" || kindValue === "digital" || kindValue === "property" ? kindValue : "product";
   const title = str(form.get("title"));
   const price = parseMoney(form.get("price"));
   const compareAt = str(form.get("compareAt")) ? parseMoney(form.get("compareAt")) : null;
@@ -88,10 +91,54 @@ export async function action({ request, params }: Route.ActionArgs) {
     const hasNew = !!str(form.get("mediaKey")) || (newFile instanceof File && newFile.size > 0);
     if (!existing?.mediaKey && !hasNew) return { error: "Upload the full file customers will get." };
   }
+  let property: {
+    listingType: ListingType;
+    priceType: PriceType;
+    reservePriceCents: number | null;
+    biddingEndsAt: Date | null;
+    titleDeed: boolean | null;
+    propertyFeatures: PropertyFeatures;
+  } | null = null;
+  if (kind === "property") {
+    if (existing?.soldAt) return { error: "This property has been sold, so it can't be changed." };
+    const listingType = str(form.get("listingType")) as ListingType;
+    if (!LISTING_TYPES.some((t) => t.value === listingType)) return { error: "Choose the type of property listing." };
+    let priceType = str(form.get("priceType")) as PriceType;
+    if (!PRICE_TYPES.some((t) => t.value === priceType)) return { error: "Choose how the price works." };
+    if (listingType === "rental" && priceType === "reserve") priceType = "negotiable";
+    if (str(form.get("description")).length < 30) return { error: "Describe the property in at least 30 characters." };
+    const propertyFeatures = featuresFromForm(form, listingType);
+    if (!propertyFeatures.location) return { error: "Enter where the property is." };
+    if (listingType === "land" && !propertyFeatures.plotSize) return { error: "Enter the plot size." };
+    let titleDeed: boolean | null = null;
+    if (needsTitleDeed(listingType)) {
+      const v = str(form.get("titleDeed"));
+      if (v !== "yes" && v !== "no") return { error: "Say whether a title deed is available." };
+      titleDeed = v === "yes";
+    }
+    let reservePriceCents: number | null = null;
+    let biddingEndsAt: Date | null = null;
+    if (priceType === "reserve") {
+      reservePriceCents = parseMoney(form.get("reservePrice"));
+      if (!reservePriceCents || (price && reservePriceCents < price)) return { error: "The reserve price can't be lower than the opening bid." };
+      biddingEndsAt = new Date(str(form.get("biddingEndsAt")));
+      if (Number.isNaN(biddingEndsAt.getTime())) return { error: "Choose when bidding ends." };
+      const hasBids = !!existing?.propertyOffers.length;
+      if (hasBids && existing?.biddingEndsAt && biddingEndsAt < existing.biddingEndsAt) return { error: "People have already bid, so you can only extend the closing date." };
+      if (biddingEndsAt.getTime() < Date.now() + 3_600_000 && biddingEndsAt.getTime() !== existing?.biddingEndsAt?.getTime()) {
+        return { error: "Bidding must end at least an hour from now." };
+      }
+    }
+    property = { listingType, priceType, reservePriceCents, biddingEndsAt, titleDeed, propertyFeatures };
+  }
   // Gallery/portfolio photos were uploaded one by one; accept only URLs of files we stored.
-  const gallery: string[] = [];
-  for (const url of form.getAll("gallery").map(String).slice(0, MAX_GALLERY)) {
-    if (await isOwnUpload(url)) gallery.push(url);
+  const gallery: { url: string; section: string | null }[] = [];
+  const sections: [string, string | null][] =
+    property && property.listingType !== "land" ? [["galleryExterior", "exterior"], ["galleryInterior", "interior"]] : [["gallery", null]];
+  for (const [field, section] of sections) {
+    for (const url of form.getAll(field).map(String).slice(0, MAX_GALLERY)) {
+      if (await isOwnUpload(url)) gallery.push({ url, section });
+    }
   }
   const alertType = str(form.get("alertType")) as AlertType | "";
   if (title.length < 3) return { error: "Title must be at least 3 characters." };
@@ -113,10 +160,21 @@ export async function action({ request, params }: Route.ActionArgs) {
     categoryId: /^[0-9a-f-]{36}$/i.test(str(form.get("categoryId"))) ? str(form.get("categoryId")) : null,
     // Digital products are priced by their options; the listing shows the lowest.
     priceCents: digital ? Math.min(...digital.offers.map((o) => o.priceCents)) : price!,
-    compareAtCents: !digital && compareAt && compareAt > price! ? compareAt : null,
-    quantity,
-    trackStock,
+    compareAtCents: !digital && !property && compareAt && compareAt > price! ? compareAt : null,
+    quantity: property ? 1 : quantity,
+    trackStock: property ? false : trackStock,
     kind,
+    archiveWhenSoldOut: kind === "product" && trackStock && form.get("archiveWhenSoldOut") === "on",
+    // Restocked: a sold-out listing that was archived goes back on sale.
+    ...(kind === "product" && quantity > 0 && existing?.archivedAt ? { archivedAt: null } : {}),
+    listingType: property?.listingType ?? null,
+    priceType: property?.priceType ?? null,
+    reservePriceCents: property?.reservePriceCents ?? null,
+    biddingEndsAt: property?.biddingEndsAt ?? null,
+    // A new closing date means a new "bidding closed" notice.
+    ...(property && property.biddingEndsAt?.getTime() !== existing?.biddingEndsAt?.getTime() ? { biddingNoticeAt: null } : {}),
+    titleDeed: property?.titleDeed ?? null,
+    propertyFeatures: property?.propertyFeatures ?? null,
     dailyCapacity,
     references: kind === "service" ? str(form.get("references")).slice(0, 3000) || null : null,
     isActive: form.get("isActive") === "on",
@@ -148,11 +206,11 @@ export async function action({ request, params }: Route.ActionArgs) {
   await db.transaction(async (tx) => {
     await tx.delete(schema.productImages).where(eq(schema.productImages.productId, productId!));
     if (gallery.length) {
-      await tx.insert(schema.productImages).values(gallery.map((url, position) => ({ productId: productId!, url, position })));
+      await tx.insert(schema.productImages).values(gallery.map((g, position) => ({ productId: productId!, url: g.url, section: g.section, position })));
     }
   });
 
-  const saved = existing ? "Changes saved." : `${kind === "service" ? "Service" : kind === "digital" ? "Digital product" : "Product"} published.`;
+  const saved = existing ? "Changes saved." : `${kind === "service" ? "Service" : kind === "digital" ? "Digital product" : kind === "property" ? "Property" : "Product"} published.`;
   if (!alertType) return redirectWithFlash(request, "/sell/products", { tone: "success", text: saved });
   try {
     const alert = await sendAlert({
@@ -178,17 +236,18 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
   const [alwaysInStock, setAlwaysInStock] = useState(product ? !product.trackStock : false);
   const categories = (useRouteLoaderData<typeof rootLoader>("root")?.categories ?? []).filter((c) => c.kind === kind);
   const isService = kind === "service";
+  const isProperty = kind === "property";
   const busy = useNavigation().state !== "idle";
   const cents = (c: number | null | undefined) => (c != null ? (c / 100).toFixed(2) : "");
 
   return (
     <>
-      <PageHeader title={product ? `Edit ${isService ? "service" : "product"}` : "New listing"} />
+      <PageHeader title={product ? `Edit ${isService ? "service" : isProperty ? "property" : "product"}` : "New listing"} />
       <Card>
         <CardContent className="pt-5">
           <Form method="post" encType="multipart/form-data" className="grid gap-5 md:grid-cols-[16rem_1fr]">
             <div className="grid content-start gap-2">
-              <p className="text-sm font-semibold">Main photo</p>
+              <p className="text-sm font-semibold">{isProperty ? "Cover photo" : "Main photo"}</p>
               <ImageDropzone
                 defaultPreview={product?.imageUrl ?? null}
                 className="aspect-square"
@@ -203,13 +262,14 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
 
             <div className="grid content-start gap-4">
               <FormError error={actionData?.error} />
-              <fieldset className="grid gap-2 sm:grid-cols-3">
+              <fieldset className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 <legend className="mb-1.5 text-sm font-semibold">What are you listing?</legend>
                 {(
                   [
                     ["product", "A product", "Something customers order and you deliver"],
                     ["service", "A service", "Booked for a date: DJ, decor, cakes, photography..."],
                     ["digital", "A digital product", "Video, music or a document, to download or watch online"],
+                    ["property", "Real Estate", "Land or a house for sale, or a house to rent"],
                   ] as const
                 ).map(([value, label, text]) => (
                   <label
@@ -230,9 +290,11 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
               <Field label="Title">
                 <Input name="title" required defaultValue={product?.title} maxLength={160} />
               </Field>
-              <Field label="Description">
-                <Textarea name="description" rows={5} defaultValue={product?.description} />
-              </Field>
+              {!isProperty ? (
+                <Field label="Description">
+                  <Textarea name="description" rows={5} defaultValue={product?.description} />
+                </Field>
+              ) : null}
               <Field label="Category">
                 <NativeSelect key={kind} name="categoryId" defaultValue={product?.categoryId ?? ""}>
                   <option value="">Uncategorised</option>
@@ -243,7 +305,25 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
                   ))}
                 </NativeSelect>
               </Field>
-              {kind !== "digital" ? (
+              {isProperty ? (
+                <PropertyFields
+                  currency={currency}
+                  max={MAX_GALLERY}
+                  d={{
+                    listingType: product?.listingType ?? null,
+                    priceType: product?.priceType ?? null,
+                    priceCents: product?.priceCents ?? null,
+                    reservePriceCents: product?.reservePriceCents ?? null,
+                    biddingEndsAt: product?.biddingEndsAt ?? null,
+                    titleDeed: product?.titleDeed ?? null,
+                    propertyFeatures: product?.propertyFeatures ?? null,
+                    description: product?.description ?? "",
+                    images: product?.images ?? [],
+                    hasOffers: !!product?.propertyOffers.length,
+                  }}
+                />
+              ) : null}
+              {kind !== "digital" && !isProperty ? (
               <div className="grid grid-cols-2 gap-3">
                   <Field label={`${isService ? "Starting price" : "Price"} (${currencySymbol(currency)})`}>
                     <Input name="price" required inputMode="decimal" defaultValue={cents(product?.priceCents)} />
@@ -281,7 +361,7 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
                     />
                   </Field>
                 </>
-              ) : (
+              ) : isProperty ? null : (
               <fieldset className="grid gap-2">
                 <legend className="mb-1.5 text-sm font-semibold">Stock</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -314,22 +394,35 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
                   ))}
                 </div>
                 {!alwaysInStock ? (
-                  <Field label="Quantity" className="max-w-40">
-                    <Input name="quantity" type="number" min={0} required defaultValue={product?.quantity ?? 1} />
-                  </Field>
+                  <>
+                    <Field label="Quantity" className="max-w-40">
+                      <Input name="quantity" type="number" min={0} required defaultValue={product?.quantity ?? 1} />
+                    </Field>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" name="archiveWhenSoldOut" defaultChecked={product?.archiveWhenSoldOut ?? false} className="mt-0.5 size-4 accent-primary" />
+                      <span>
+                        <span className="font-medium">Archive when sold out</span>
+                        <span className="block text-xs text-muted-foreground">
+                          Hidden from shoppers once it reaches 0, then deleted for good after the period MyPlug sets. Restock before then to bring it back.
+                        </span>
+                      </span>
+                    </label>
+                  </>
                 ) : null}
               </fieldset>
               )}
-              <Field label={isService ? "Portfolio: photos of your work" : "More photos"} hint="Up to 8. Drag & drop several at once.">
-                <GalleryField initial={product?.images.map((i) => i.url) ?? []} max={MAX_GALLERY} />
-              </Field>
+              {!isProperty ? (
+                <Field label={isService ? "Portfolio: photos of your work" : "More photos"} hint="Up to 8. Drag & drop several at once.">
+                  <GalleryField initial={product?.images.map((i) => i.url) ?? []} max={MAX_GALLERY} />
+                </Field>
+              ) : null}
               <AlertFields quota={quota} counts={counts} />
               <label className="flex items-center gap-2 text-sm font-medium">
                 <input type="checkbox" name="isActive" defaultChecked={product?.isActive ?? true} className="size-4 accent-primary" />
                 Visible to shoppers
               </label>
               <Button type="submit" size="lg" disabled={busy} className="justify-self-start">
-                {busy ? "Saving..." : product ? "Save changes" : `Publish ${kind}`}
+                {busy ? "Saving..." : product ? "Save changes" : `Publish ${isProperty ? "property" : kind}`}
               </Button>
             </div>
           </Form>

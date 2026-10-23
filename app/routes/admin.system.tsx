@@ -8,6 +8,7 @@ import { Field, Input, NativeSelect } from "~/components/ui/input";
 import { requireAdmin } from "~/lib/auth.server";
 import { runDuePlans } from "~/lib/recurring.server";
 import { getRetentionSettings, retentionCandidates, runRetention, saveRetentionSettings } from "~/lib/retention.server";
+import { getListingRetention, runListingCleanup, saveListingRetention } from "~/lib/property.server";
 import {
   getStorageSettings,
   resolveBackend,
@@ -24,7 +25,7 @@ export const meta: Route.MetaFunction = () => [{ title: "System settings · Admi
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
-  const [{ backend, ftp }, retention] = await Promise.all([getStorageSettings(), getRetentionSettings()]);
+  const [{ backend, ftp }, retention, listings] = await Promise.all([getStorageSettings(), getRetentionSettings(), getListingRetention()]);
   const candidates = await retentionCandidates(retention);
   return {
     backend,
@@ -33,6 +34,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     // Never send the password back to the browser; only whether one is saved.
     ftp: { ...ftp, password: undefined, hasPassword: !!ftp.password },
     retention,
+    listings,
     preview: {
       archive: candidates.toArchive.map((s) => s.name),
       warn: candidates.toWarn.map((s) => s.name),
@@ -90,10 +92,16 @@ export async function action({ request }: Route.ActionArgs) {
     return { ok: "Retention settings saved." };
   }
 
+  if (intent === "listings") {
+    const int = (name: string) => Math.min(3650, Math.max(1, Math.floor(Number(form.get(name)) || 1)));
+    await saveListingRetention({ soldPropertyDays: int("soldPropertyDays"), soldOutDays: int("soldOutDays") });
+    return { ok: "Listing clean-up settings saved." };
+  }
+
   if (intent === "run-daily") {
-    const [plans, retention] = [await runDuePlans(), await runRetention()];
+    const [plans, retention, listings] = [await runDuePlans(), await runRetention(), await runListingCleanup()];
     return {
-      ok: `Done. Repeat orders: ${plans.created} deliveries created, ${plans.skipped} skipped. Stores: ${retention.archived} archived, ${retention.warned} warned, ${retention.deleted} deleted.`,
+      ok: `Done. Repeat orders: ${plans.created} deliveries created, ${plans.skipped} skipped. Stores: ${retention.archived} archived, ${retention.warned} warned, ${retention.deleted} deleted. Listings: ${listings.soldArchived + listings.soldOutArchived} archived, ${listings.deleted} deleted.`,
     };
   }
   return { error: "Unknown action." };
@@ -107,7 +115,7 @@ const BACKENDS: { value: StorageBackend; label: string; text: string }[] = [
 ];
 
 export default function SystemSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { backend, activeBackend, blobConfigured, ftp, retention, preview } = loaderData;
+  const { backend, activeBackend, blobConfigured, ftp, retention, preview, listings } = loaderData;
   const [choice, setChoice] = useState<StorageBackend>(backend);
   const busy = useNavigation().state !== "idle";
 
@@ -200,6 +208,31 @@ export default function SystemSettings({ loaderData, actionData }: Route.Compone
 
       <Card className="mt-6">
         <CardHeader>
+          <CardTitle>Sold and sold-out listings</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Property is archived (hidden) the day after the merchant accepts an offer. Products whose merchant chose "archive when sold out" are
+            archived once they reach zero (and come back if restocked). Archived listings are then deleted for good after:
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Form method="post" className="grid gap-4 sm:grid-cols-3">
+            <input type="hidden" name="intent" value="listings" />
+            <Field label="Sold / let property (days archived)">
+              <Input name="soldPropertyDays" type="number" min={1} max={3650} defaultValue={listings.soldPropertyDays} />
+            </Field>
+            <Field label="Sold-out products (days archived)">
+              <Input name="soldOutDays" type="number" min={1} max={3650} defaultValue={listings.soldOutDays} />
+            </Field>
+            <Button type="submit" disabled={busy} className="self-end justify-self-start">
+              Save
+            </Button>
+          </Form>
+          <p className="mt-2 text-xs text-muted-foreground">Order history keeps the item names and prices after a listing is deleted.</p>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
           <CardTitle>Inactive stores</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -234,7 +267,7 @@ export default function SystemSettings({ loaderData, actionData }: Route.Compone
           </div>
           <Form method="post">
             <Button type="submit" name="intent" value="run-daily" variant="outline" size="sm" disabled={busy}>
-              <PlayIcon /> Run the daily jobs now (repeat deliveries + inactive stores)
+              <PlayIcon /> Run the daily jobs now (repeat deliveries, inactive stores, listing clean-up)
             </Button>
           </Form>
         </CardContent>

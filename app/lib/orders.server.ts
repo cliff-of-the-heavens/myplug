@@ -115,6 +115,7 @@ export async function createOrderTx(tx: Tx, input: NewOrder) {
   const product = locked[0];
   const storeId = product.storeId;
 
+  if (locked.some((p) => p.kind === "property")) throw new OrderError("Property isn't ordered: make an offer on the listing instead.");
   const isService = product.kind === "service";
   const isDigital = product.kind === "digital";
   if ((isService || isDigital) && requested.length > 1) throw new OrderError("Book services and buy downloads one at a time.");

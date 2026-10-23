@@ -53,7 +53,7 @@ export async function cartCount(userId: string) {
 export async function addToCart(userId: string, productId: string, quantity = 1) {
   const p = await db.query.products.findFirst({ where: eq(products.id, productId), with: { store: { columns: { status: true } } } });
   if (!p || !p.isActive || p.store.status !== "approved") throw new CartError("This product isn't available.");
-  if (p.kind !== "product") throw new CartError("Services are booked and downloads are bought from their own page.");
+  if (p.kind !== "product") throw new CartError("Services are booked, downloads are bought and property gets offers from their own page.");
   if (!Number.isInteger(quantity) || quantity < 1) throw new CartError("Choose a quantity.");
   await db
     .insert(cartItems)

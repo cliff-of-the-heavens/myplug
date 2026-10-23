@@ -64,6 +64,13 @@
       "when": 1792650239323,
       "tag": "0008_reviews_and_ad_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792701616910,
+      "tag": "0009_real_estate",
+      "breakpoints": true
     }
   ]
 }

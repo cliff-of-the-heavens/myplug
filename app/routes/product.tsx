@@ -36,7 +36,7 @@ import { getUser, requireCustomer } from "~/lib/auth.server";
 import { getFeed } from "~/lib/catalog.server";
 import type { PaymentTiming, PlanFrequency } from "~/db/schema";
 import { addDays, formatDay, FREQUENCIES, FREQUENCY_LABEL, today } from "~/lib/dates";
-import { date, money, stockLabel } from "~/lib/format";
+import { date, money, parseMoney, stockLabel } from "~/lib/format";
 import { useOptionalUser } from "~/lib/hooks";
 import { findOrCreateConversation } from "~/lib/messaging.server";
 import { BILL_TERMS_DAYS } from "~/lib/orders";
@@ -55,6 +55,8 @@ import { RatingBadge, RatingSummary, ReviewList, Stars } from "~/components/rati
 import { listReviews, ratingSummary } from "~/lib/reviews.server";
 import { BannerSlot } from "~/components/banner-ads";
 import { pageBanners } from "~/lib/banners.server";
+import { PropertyFeaturesList, PropertyPanel, PropertyPhotos, type OfferState } from "~/components/property-panel";
+import { makeOffer, myOfferOn, offerStats, PropertyError, withdrawOffer } from "~/lib/property.server";
 import type { Route } from "./+types/product";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -73,7 +75,7 @@ async function loadProduct(id: string) {
         with: { preferredCourier: { columns: { name: true } } },
       },
       category: true,
-      images: { orderBy: asc(schema.productImages.position), columns: { id: true, url: true } },
+      images: { orderBy: asc(schema.productImages.position), columns: { id: true, url: true, section: true } },
     },
   });
 }
@@ -81,7 +83,7 @@ async function loadProduct(id: string) {
 export async function loader({ request, params }: Route.LoaderArgs) {
   const [product, user] = await Promise.all([loadProduct(params.id), getUser(request)]);
   const isOwner = !!user?.storeId && product?.storeId === user.storeId;
-  const visible = product?.isActive && product.store.status === "approved";
+  const visible = product?.isActive && !product.archivedAt && product.store.status === "approved";
   if (!product || (!visible && !isOwner && user?.role !== "admin")) throw data("Product not found", { status: 404 });
 
   const related = await getFeed(
@@ -128,7 +130,18 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     ratingSummary("store", product.storeId),
   ]);
   const banners = await pageBanners(request, ["sidebar"]);
-  return { product, related, isOwner, follow, booking, checkout, business, digital, sale, ratings, reviewList, storeRating, banners };
+  let property: OfferState | null = null;
+  if (product.kind === "property") {
+    const stats = await offerStats(product.id);
+    property = {
+      ...stats,
+      // Buyers only learn whether the secret reserve has been met.
+      reserveMet: product.priceType === "reserve" && product.reservePriceCents ? (stats.highestCents ?? 0) >= product.reservePriceCents : null,
+      mine: user?.role === "customer" ? await myOfferOn(user.id, product.id) : null,
+    };
+    if (!isOwner) product.reservePriceCents = null; // never sent to anyone but the seller
+  }
+  return { property, product, related, isOwner, follow, booking, checkout, business, digital, sale, ratings, reviewList, storeRating, banners };
 }
 
 const CALENDAR_DAYS = 63; // nine weeks ahead
@@ -164,6 +177,21 @@ export async function action({ request, params }: Route.ActionArgs) {
   const intent = form.get("intent");
   const product = await loadProduct(params.id);
   if (!product || !product.isActive) throw data("Product not found", { status: 404 });
+
+  if (intent === "offer" || intent === "withdraw-offer") {
+    try {
+      if (intent === "withdraw-offer") {
+        const mine = await myOfferOn(user.id, product.id);
+        if (mine) await withdrawOffer(user.id, mine.id);
+        return { ok: "Offer withdrawn." };
+      }
+      await makeOffer({ customerId: user.id, productId: product.id, amountCents: parseMoney(form.get("amount")), message: String(form.get("message") ?? "") });
+      return { ok: "Sent! The seller has been told." };
+    } catch (e) {
+      if (e instanceof PropertyError) return { error: e.message };
+      throw e;
+    }
+  }
 
   if (intent === "order" || intent === "book") {
     const paymentTiming: PaymentTiming = form.get("payment") === "prepaid" ? "prepaid" : "on_delivery";
@@ -555,6 +583,15 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
             </div>
           </div>
 
+          {loaderData.property ? (
+            <PropertyPanel
+              p={{ ...product, currency: product.store.currency }}
+              offers={loaderData.property}
+              viewer={isOwner ? "owner" : !user ? "guest" : user.role === "customer" ? "customer" : "other"}
+              error={actionData && "error" in actionData ? actionData.error : null}
+            />
+          ) : null}
+          {!loaderData.property ? (
           <div className="flex flex-wrap items-baseline gap-3">
             {isService ? <span className="text-sm text-muted-foreground">from</span> : null}
             <span className="text-4xl font-black text-primary">{money(price.now, product.store.currency)}</span>
@@ -570,16 +607,18 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
               </Badge>
             )}
           </div>
-          {sale ? (
+          ) : null}
+          {sale && !loaderData.property ? (
             <p className="-mt-3 flex flex-wrap items-center gap-2 text-sm font-semibold text-primary">
               {sale.name}
               {sale.endsAt ? <DealCountdown endsAt={sale.endsAt} /> : null}
             </p>
           ) : null}
-          {!isService && product.trackStock && product.quantity > 0 ? (
+          {!isService && !loaderData.property && product.trackStock && product.quantity > 0 ? (
             <p className="-mt-3 text-sm text-muted-foreground">{product.quantity} available</p>
           ) : null}
 
+          {!loaderData.property ? (
           <div className="rounded-2xl border bg-card p-5">
             <FormError error={actionData && "error" in actionData ? actionData.error : null} />
             {isOwner ? (
@@ -626,15 +665,19 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
               </p>
             )}
           </div>
+          ) : null}
+          {loaderData.property && actionData && "ok" in actionData && actionData.ok ? <p className="text-sm font-semibold text-success">{actionData.ok}</p> : null}
 
           {user?.role === "customer" && !isOwner ? (
             <Form method="post" className="grid grid-cols-2 gap-3">
               <Button type="submit" name="intent" value="message" variant="outline">
                 <MessageCircleIcon /> Ask a question
               </Button>
-              <Button type="submit" name="intent" value="special" variant="accent">
-                <WandSparklesIcon /> Special order
-              </Button>
+              {!loaderData.property ? (
+                <Button type="submit" name="intent" value="special" variant="accent">
+                  <WandSparklesIcon /> Special order
+                </Button>
+              ) : null}
             </Form>
           ) : null}
 
@@ -647,9 +690,15 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
             </div>
           ) : null}
 
+          {loaderData.property ? (
+            <>
+              <PropertyFeaturesList type={product.listingType} f={product.propertyFeatures} />
+              <PropertyPhotos images={product.images} onPick={setPhoto} />
+            </>
+          ) : null}
           {product.description ? (
             <div className="grid gap-2">
-              <h2 className="font-bold">{isService ? "About this service" : "About this item"}</h2>
+              <h2 className="font-bold">{isService ? "About this service" : loaderData.property ? "About this property" : "About this item"}</h2>
               <p className="whitespace-pre-line text-muted-foreground">{product.description}</p>
             </div>
           ) : null}
@@ -664,7 +713,7 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
         </div>
       </div>
 
-      <div className={cn("mt-12 grid gap-6", loaderData.banners.sidebar?.length && "lg:grid-cols-[1fr_300px]")}>
+      <div className={cn("mt-12 grid items-start gap-6", loaderData.banners.sidebar?.length && "lg:grid-cols-[minmax(0,1fr)_300px]")}>
       <section id="reviews" className="grid scroll-mt-20 content-start gap-4">
         <h2 className="flex items-center gap-2 text-xl font-extrabold">
           <StarIcon className="size-5 text-amber-400" /> Ratings & reviews
@@ -679,7 +728,7 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
           </CardContent>
         </Card>
       </section>
-        <BannerSlot ads={loaderData.banners.sidebar} shape="sidebar" className="sticky top-36 hidden self-start lg:block" />
+        <BannerSlot ads={loaderData.banners.sidebar} shape="sidebar" className="sticky top-36 hidden lg:block" />
       </div>
 
       {related.length ? (

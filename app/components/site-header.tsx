@@ -1,6 +1,7 @@
 import {
   BellIcon,
   EyeOffIcon,
+  HandCoinsIcon,
   KeyRoundIcon,
   GiftIcon,
   HeartIcon,
@@ -21,6 +22,7 @@ import {
   UserIcon,
 } from "lucide-react";
 import { Form, Link, NavLink, useSearchParams, useSubmit } from "react-router";
+import type { ProductKind } from "~/db/schema";
 import type { SessionUser } from "~/lib/auth.server";
 import { iconUrl } from "~/lib/brand";
 import { AuthLink } from "./auth-dialog";
@@ -35,7 +37,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-type Category = { id: string; name: string; slug: string; kind: "product" | "service" | "digital" };
+type Category = { id: string; name: string; slug: string; kind: ProductKind };
 
 export function Logo({ className }: { className?: string }) {
   return (
@@ -147,6 +149,11 @@ function AccountMenu({ user }: { user: SessionUser }) {
             <DropdownMenuItem asChild>
               <Link to="/account/coupons">
                 <GiftIcon /> Gift coupons
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/account/offers">
+                <HandCoinsIcon /> Property offers
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -298,6 +305,12 @@ export function SiteHeader({
             className="shrink-0 rounded-full bg-white/20 px-3 py-1 text-sm font-bold whitespace-nowrap text-white hover:bg-white/30"
           >
             Downloads
+          </Link>
+          <Link
+            to="/search?kind=property"
+            className="shrink-0 rounded-full bg-white/20 px-3 py-1 text-sm font-bold whitespace-nowrap text-white hover:bg-white/30"
+          >
+            Real Estate
           </Link>
           {categories.filter((c) => c.kind === "product").map((c) => (
             <Link

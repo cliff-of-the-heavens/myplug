@@ -10,6 +10,7 @@ import { qualified } from "~/db/sql";
 import { liveAd } from "~/lib/ads.server";
 import { getFlash, requireMerchant } from "~/lib/auth.server";
 import { money, stockLabel } from "~/lib/format";
+import { LISTING_BADGE, soldWord } from "~/lib/property";
 import type { Route } from "./+types/sell.products";
 
 export const meta: Route.MetaFunction = () => [{ title: "My products · MyPlug" }];
@@ -32,6 +33,11 @@ export async function loader({ request }: Route.LoaderArgs) {
       imageUrl: products.imageUrl,
       imageHidden: products.imageHidden,
       isActive: products.isActive,
+      kind: products.kind,
+      listingType: products.listingType,
+      archivedAt: products.archivedAt,
+      archiveWhenSoldOut: products.archiveWhenSoldOut,
+      soldAt: products.soldAt,
       promoEnds: sql<Date | null>`(select max(${promotions.endsAt}) from ${promotions}
         where ${qualified(promotions.productId)} = ${qualified(products.id)}
         and ${liveAd})`.mapWith(
@@ -54,7 +60,8 @@ export async function action({ request }: Route.ActionArgs) {
   if (!Number.isFinite(quantity)) return { error: "Invalid quantity" };
   await db
     .update(schema.products)
-    .set({ quantity })
+    // Restocking brings back a listing that was archived when it sold out.
+    .set(quantity > 0 ? { quantity, archivedAt: null } : { quantity })
     .where(and(eq(schema.products.id, id), eq(schema.products.storeId, user.storeId), eq(schema.products.trackStock, true)));
   return { ok: true };
 }
@@ -128,7 +135,9 @@ export default function SellProducts({ loaderData }: Route.ComponentProps) {
                     </td>
                     <td className="p-3 font-semibold">{money(p.priceCents, currency)}</td>
                     <td className="p-3">
-                      {p.trackStock ? (
+                      {p.kind === "property" ? (
+                        <span className="text-sm text-muted-foreground">{p.listingType ? LISTING_BADGE[p.listingType] : "Property"}</span>
+                      ) : p.trackStock ? (
                         <StockInput id={p.id} quantity={p.quantity} />
                       ) : (
                         <span className="text-sm text-muted-foreground" title="Continuous supply: no count kept">∞ Always in stock</span>
@@ -136,10 +145,14 @@ export default function SellProducts({ loaderData }: Route.ComponentProps) {
                     </td>
                     <td className="p-3">
                       <div className="flex flex-wrap gap-1">
-                        <Badge variant={stock.tone === "out" ? "destructive" : stock.tone === "low" ? "warning" : "success"}>
-                          {stock.text}
-                        </Badge>
-                        {!p.isActive ? <Badge variant="muted">Hidden</Badge> : null}
+                        {p.kind === "property" ? (
+                          p.soldAt ? <Badge variant="destructive">{soldWord(p.listingType)}</Badge> : <Badge variant="success">On the market</Badge>
+                        ) : (
+                          <Badge variant={stock.tone === "out" ? "destructive" : stock.tone === "low" ? "warning" : "success"}>{stock.text}</Badge>
+                        )}
+                        {p.archivedAt ? <Badge variant="muted" title="Hidden from shoppers; deleted after MyPlug's retention period">Archived</Badge> : null}
+                        {p.archiveWhenSoldOut && !p.archivedAt ? <Badge variant="muted">Archives when sold out</Badge> : null}
+                        {!p.isActive && !p.archivedAt ? <Badge variant="muted">Hidden</Badge> : null}
                         {p.imageHidden ? <Badge variant="destructive">Image under review</Badge> : null}
                       </div>
                     </td>

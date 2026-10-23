@@ -56,7 +56,7 @@ export const storeStatus = pgEnum("store_status", [
 ]);
 
 /** Physical goods are ordered; services (DJs, decor, cakes...) are booked for a date. */
-export const productKind = pgEnum("product_kind", ["product", "service", "digital"]);
+export const productKind = pgEnum("product_kind", ["product", "service", "digital", "property"]);
 
 /** Digital products: what kind of file is sold. */
 export const mediaType = pgEnum("media_type", ["video", "audio", "document"]);
@@ -213,6 +213,18 @@ export const products = pgTable(
     imageUrl: text("image_url"),
     imageHidden: boolean("image_hidden").notNull().default(false), // moderation
     isActive: boolean("is_active").notNull().default(true),
+    // Products: hide the listing automatically once it sells out (then delete it after the admin's retention period)
+    archiveWhenSoldOut: boolean("archive_when_sold_out").notNull().default(false),
+    archivedAt: timestamp("archived_at", { withTimezone: true }), // hidden from shoppers; deleted after the retention period
+    // Real estate (kind = "property")
+    listingType: text("listing_type").$type<ListingType>(), // land | house | rental
+    priceType: text("price_type").$type<PriceType>(), // negotiable | fixed | reserve
+    reservePriceCents: money("reserve_price_cents"), // reserve listings: lowest price accepted (never shown to buyers)
+    biddingEndsAt: timestamp("bidding_ends_at", { withTimezone: true }), // reserve listings: when offers close
+    biddingNoticeAt: timestamp("bidding_notice_at", { withTimezone: true }), // merchant told that bidding closed
+    titleDeed: boolean("title_deed"), // land and houses for sale: is a title deed available?
+    propertyFeatures: jsonb("property_features").$type<PropertyFeatures>(),
+    soldAt: timestamp("sold_at", { withTimezone: true }), // property sold or let to the accepted offer
     ...timestamps,
   },
   (t) => [
@@ -231,6 +243,7 @@ export const productImages = pgTable(
       .notNull()
       .references(() => products.id, { onDelete: "cascade" }),
     url: text("url").notNull(),
+    section: text("section"), // houses: "interior" | "exterior"
     position: integer("position").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -746,6 +759,48 @@ export const adFreePasses = pgTable("ad_free_passes", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export type ListingType = "land" | "house" | "rental";
+export type PriceType = "negotiable" | "fixed" | "reserve";
+export type PropertyFeatures = {
+  location?: string;
+  plotSize?: string; // e.g. "50 x 30 m" or "1 acre"
+  bedrooms?: number;
+  bathrooms?: number;
+  backupPower?: boolean; // solar / inverter / generator
+  waterTank?: boolean;
+  masterEnsuite?: boolean;
+  separateDining?: boolean; // dining room separate from the lounge
+  parking?: boolean;
+  furnished?: boolean;
+  securityWall?: boolean; // wall/fence and gate
+  borehole?: boolean;
+  servantsQuarters?: boolean;
+  other?: string;
+};
+
+/**
+ * A customer's offer on a property (or bid, for reserve-price listings). One per customer per
+ * listing; raising a bid updates it. The merchant accepts one, which marks the property sold.
+ */
+export const propertyOffers = pgTable(
+  "property_offers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    amountCents: money("amount_cents").notNull(),
+    message: text("message"),
+    status: text("status").$type<"pending" | "accepted" | "declined" | "withdrawn" | "lost">().notNull().default("pending"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("property_offers_product_customer_idx").on(t.productId, t.customerId), index("property_offers_product_idx").on(t.productId, t.status)],
+);
+
 /** Small key/value store for admin-editable platform settings. */
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
@@ -1182,6 +1237,11 @@ export const adFreePassesRelations = relations(adFreePasses, ({ one }) => ({
   user: one(users, { fields: [adFreePasses.userId], references: [users.id] }),
 }));
 
+export const propertyOffersRelations = relations(propertyOffers, ({ one }) => ({
+  product: one(products, { fields: [propertyOffers.productId], references: [products.id] }),
+  customer: one(users, { fields: [propertyOffers.customerId], references: [users.id] }),
+}));
+
 export const productImagesRelations = relations(productImages, ({ one }) => ({
   product: one(products, { fields: [productImages.productId], references: [products.id] }),
 }));
@@ -1209,6 +1269,7 @@ export const productsRelations = relations(products, ({ one, many }) => ({
   promotions: many(promotions),
   images: many(productImages),
   offers: many(digitalOffers),
+  propertyOffers: many(propertyOffers),
 }));
 
 export const promotionsRelations = relations(promotions, ({ one }) => ({

@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import {
   ArrowRightIcon,
+  HouseIcon,
   ImagePlusIcon,
   MegaphoneIcon,
   MessageCircleIcon,
@@ -15,7 +16,7 @@ import { Container } from "~/components/page";
 import { ProductGrid, ProductShelf } from "~/components/product-card";
 import { Button } from "~/components/ui/button";
 import { schema } from "~/db/client.server";
-import { getDeals, getFeed, getServices, getSponsored } from "~/lib/catalog.server";
+import { getDeals, getFeed, getProperties, getServices, getSponsored } from "~/lib/catalog.server";
 import { useOptionalUser } from "~/lib/hooks";
 import type { loader as rootLoader } from "~/root";
 import { BannerSlot, HeroCarousel, TopShopsPanel } from "~/components/banner-ads";
@@ -24,15 +25,16 @@ import type { Route } from "./+types/home";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const settings = await bannerSettings();
-  const [sponsored, deals, feed, services, banners, shops] = await Promise.all([
+  const [sponsored, deals, feed, services, banners, shops, properties] = await Promise.all([
     getSponsored(10),
     getDeals(10),
     getFeed(30, eq(schema.products.kind, "product")),
     getServices(10),
     pageBanners(request, ["hero", "home_banner"]),
     topShops(settings.heroPanel),
+    getProperties(10),
   ]);
-  return { sponsored, deals, feed, services, banners, shops, heroPanel: settings.heroPanel };
+  return { sponsored, deals, feed, services, banners, shops, properties, heroPanel: settings.heroPanel };
 }
 
 // The feed is randomised per visit, so don't let CDNs cache it.
@@ -130,10 +132,11 @@ function Section({
 }
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { sponsored, deals, feed, services, banners, shops, heroPanel } = loaderData;
+  const { sponsored, deals, feed, services, banners, shops, properties, heroPanel } = loaderData;
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const productCategories = root?.categories.filter((c) => c.kind === "product") ?? [];
   const serviceCategories = root?.categories.filter((c) => c.kind === "service") ?? [];
+  const propertyCategories = root?.categories.filter((c) => c.kind === "property") ?? [];
 
   return (
     <Container className="grid gap-10 py-6 md:gap-12 md:py-8">
@@ -178,6 +181,27 @@ export default function Home({ loaderData }: Route.ComponentProps) {
             ))}
           </div>
           {services.length ? <ProductShelf products={services} /> : null}
+        </div>
+      </Section>
+
+      <Section title="Real Estate" href="/search?kind=property" icon={<HouseIcon className="size-5 text-primary" />}>
+        <div className="grid gap-4">
+          <div className="scrollbar-none -mx-4 flex gap-2 overflow-x-auto px-4">
+            {propertyCategories.map((c, i) => (
+              <Link
+                key={c.id}
+                to={`/search?category=${c.slug}`}
+                className={`flex shrink-0 items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold ${TILE_COLORS[(i + 3) % TILE_COLORS.length]}`}
+              >
+                <CategoryIcon name={c.icon} className="size-4" /> {c.name}
+              </Link>
+            ))}
+          </div>
+          {properties.length ? (
+            <ProductShelf products={properties} />
+          ) : (
+            <p className="text-sm text-muted-foreground">No property listed yet. Merchants: list land, houses for sale or rentals from your dashboard.</p>
+          )}
         </div>
       </Section>
 

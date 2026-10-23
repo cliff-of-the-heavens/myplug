@@ -1,7 +1,8 @@
-import { CalendarCheckIcon, DownloadIcon, SparklesIcon } from "lucide-react";
+import { CalendarCheckIcon, DownloadIcon, GavelIcon, HouseIcon, SparklesIcon } from "lucide-react";
 import { Link } from "react-router";
 import type { ProductCardData } from "~/lib/catalog.server";
 import { money, stockLabel } from "~/lib/format";
+import { LISTING_BADGE, priceSuffix, soldWord } from "~/lib/property";
 import { cn } from "~/lib/utils";
 import { DealCountdown, priceDisplay } from "./price";
 import { RatingBadge } from "./rating";
@@ -46,10 +47,23 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
             <Badge variant="accent">
               <DownloadIcon /> Digital
             </Badge>
+          ) : product.kind === "property" && product.listingType ? (
+            <Badge variant="accent">
+              <HouseIcon /> {LISTING_BADGE[product.listingType]}
+            </Badge>
+          ) : null}
+          {product.priceType === "reserve" && !product.soldAt ? (
+            <Badge variant="highlight">
+              <GavelIcon /> Bidding
+            </Badge>
           ) : null}
         </div>
         <FavouriteButton productId={product.id} className="absolute top-2 right-2" />
-        {stock.tone === "out" ? (
+        {product.soldAt ? (
+          <span className="absolute inset-x-0 bottom-0 bg-destructive py-1 text-center text-xs font-bold tracking-wide text-white uppercase">
+            {soldWord(product.listingType)}
+          </span>
+        ) : stock.tone === "out" ? (
           <span className="absolute inset-x-0 bottom-0 bg-foreground/75 py-1 text-center text-xs font-semibold text-background">
             Out of stock
           </span>
@@ -61,9 +75,24 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
           {product.storeName}
           <RatingBadge average={product.ratingAvg} total={product.ratingCount} />
         </p>
+        {product.kind === "property" && product.propertyFeatures ? (
+          <p className="truncate text-xs text-muted-foreground">
+            {[
+              product.propertyFeatures.bedrooms != null ? `${product.propertyFeatures.bedrooms} bed` : null,
+              product.propertyFeatures.bathrooms != null ? `${product.propertyFeatures.bathrooms} bath` : null,
+              product.propertyFeatures.plotSize,
+              product.propertyFeatures.location,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
         <div className="mt-auto flex items-baseline gap-2 pt-1">
-          {product.kind !== "product" ? <span className="text-xs text-muted-foreground">from</span> : null}
+          {product.kind === "service" || product.kind === "digital" || product.priceType === "reserve" ? (
+            <span className="text-xs text-muted-foreground">from</span>
+          ) : null}
           <span className="text-lg font-extrabold">{money(price.now, product.currency)}</span>
+          {product.kind === "property" ? <span className="text-xs text-muted-foreground">{priceSuffix(product.listingType)}</span> : null}
           {price.was ? <span className="text-xs text-muted-foreground line-through">{money(price.was, product.currency)}</span> : null}
         </div>
         {product.salePct && product.saleEndsAt ? <DealCountdown endsAt={product.saleEndsAt} /> : null}

@@ -53,6 +53,11 @@ Tailwind v4 + shadcn/ui components · Vercel Blob for images · deployed on Verc
 | 41 | Upload link + passcode for outside advertisers | `ad_upload_links`; `/ad-upload/:token` |
 | 42 | Top 5 selling / top rated shops beside the hero (admin's choice) | Admin → Banner ads → Spots, prices & hero panel |
 | 43 | Pay to hide side banners | `ad_free_passes`, `users.ad_free_until`; `/account/ad-free` |
+| 44 | Real Estate: land, houses for sale, rentals | product kind `property`; `listing_type`, `property_features`; `/search?kind=property` |
+| 45 | Title deed available / not, for land and houses for sale | `products.title_deed`, shown on listings and filterable in search |
+| 46 | Negotiable, non-negotiable or reserve price (with bidding end date) | `price_type`, `reserve_price_cents` (secret), `bidding_ends_at` |
+| 47 | Customers make offers; merchant picks the buyer; sold → archived next day → deleted | `property_offers`; Seller → Property offers, `/account/offers`, `runListingCleanup()` |
+| 48 | Products can be archived when sold out, then deleted after a retention period | `products.archive_when_sold_out`, `archived_at`; Admin → System settings |
 
 ## Getting started
 
@@ -497,6 +502,43 @@ Recommended additions before launch:
 - **Appeals and notifications.** Email the owner when content is removed, and give them a way to appeal.
 - **Abuse limits.** Rate-limit uploads and reports per user (e.g. Upstash Ratelimit), and require email
   or phone verification before someone can post requests or send images.
+
+## Real Estate
+
+A fourth kind of listing beside products, services and downloads (header link **Real Estate**, a home page
+section, and `/search?kind=property` with filters for type, title deed and key features).
+
+| Listing type | What the merchant gives |
+| --- | --- |
+| Land / plot for sale | A long description (the main information), location, plot size, title deed yes/no; photos optional |
+| House for sale | Description, location, bedrooms/bathrooms, features, title deed yes/no, **exterior** and **interior** photos |
+| House to rent | Monthly rent, bedrooms/bathrooms and the checklist: backup power, water tank, master en-suite, dining separate from the lounge, parking, wall/gate, borehole, furnished, staff quarters |
+
+**Price terms:**
+
+- **Negotiable:** buyers offer any amount.
+- **Non-negotiable:** buyers can only say "I'm interested" at the asking price.
+- **Reserve price** (sales only): buyers bid from an opening price until a closing date the merchant sets.
+  The reserve stays secret (it's never sent to anyone but the seller); buyers see the highest bid, the
+  number of bidders and whether the reserve has been met. Once bids exist, the closing date can only be
+  extended.
+
+**Offers:** one per customer per listing; changing it (or raising a bid) updates it, and customers can
+withdraw. Messages pass through the obscene-word filter. The merchant is notified and sees the buyer's first
+name only (never their email). They can message buyers through MyPlug.
+
+**Deciding:** under **Seller → Property offers** the merchant declines offers or accepts one. For bidding,
+they can only accept after bidding closes; they're notified when it does. Accepting marks the property
+**Sold** (or **Let**) and tells the buyer and everyone else. *Sold/let elsewhere* takes a listing off the
+market without an offer. Customers track their offers under **Account → Property offers**.
+
+**After the sale:** the listing shows "Sold" for the rest of the day (it leaves the home feed straight away),
+is **archived** (hidden) the next day by the daily job, and is **deleted** after the number of days the
+admin sets under **Admin → System settings → Sold and sold-out listings** (default 30).
+
+**Archive when sold out (normal products):** a merchant can tick this on any product whose stock they count.
+At zero it's archived and hidden; restocking brings it back. Otherwise it's deleted after the admin's
+retention period. Order history keeps item names and prices, because order lines are snapshots.
 
 ## Not yet built (good next steps)
 

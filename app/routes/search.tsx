@@ -8,6 +8,8 @@ import { getCategories, searchProducts, type SortKey } from "~/lib/catalog.serve
 import { cn } from "~/lib/utils";
 import { BannerSlot } from "~/components/banner-ads";
 import { pageBanners } from "~/lib/banners.server";
+import type { ListingType } from "~/db/schema";
+import { FEATURE_FLAGS, LISTING_TYPES } from "~/lib/property";
 import type { Route } from "./+types/search";
 
 const SORTS: { value: SortKey; label: string }[] = [
@@ -34,19 +36,24 @@ export async function loader({ request }: Route.LoaderArgs) {
   const kindParam = url.searchParams.get("kind");
   const kind: ProductKind | undefined =
     allCategories.find((c) => c.slug === category)?.kind ??
-    (kindParam === "service" || kindParam === "digital" || kindParam === "product" ? kindParam : undefined);
+    (kindParam === "service" || kindParam === "digital" || kindParam === "product" || kindParam === "property" ? kindParam : undefined);
+  // Real estate filters
+  const listingParam = url.searchParams.get("listing");
+  const listingType = kind === "property" && LISTING_TYPES.some((t) => t.value === listingParam) ? (listingParam as ListingType) : undefined;
+  const features = kind === "property" ? url.searchParams.getAll("feature").filter((f) => FEATURE_FLAGS.some((x) => x.key === f)) : [];
+  const titleDeed = kind === "property" && url.searchParams.get("deed") === "1";
 
-  const products = await searchProducts({ q, categorySlug: category, sort, kind, inStockOnly: inStock && kind === "product" });
+  const products = await searchProducts({ q, categorySlug: category, sort, kind, inStockOnly: inStock && kind === "product", listingType, features, titleDeed });
   const categories = allCategories.filter((c) => (kind ? c.kind === kind : true));
   const categoryName = categories.find((c) => c.slug === category)?.name;
-  const heading = q ? `Results for "${q}"` : (categoryName ?? (kind === "service" ? "Services" : kind === "digital" ? "Digital downloads" : "All products"));
+  const heading = q ? `Results for "${q}"` : (categoryName ?? (kind === "service" ? "Services" : kind === "digital" ? "Digital downloads" : kind === "property" ? "Real Estate" : "All products"));
 
   const banners = await pageBanners(request, ["category_top", "sidebar"]);
-  return { products, categories, q, category, sort, inStock, heading, kind, banners };
+  return { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed };
 }
 
 export default function Search({ loaderData }: Route.ComponentProps) {
-  const { products, categories, q, category, sort, inStock, heading, kind, banners } = loaderData;
+  const { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed } = loaderData;
   const submit = useSubmit();
 
   const chip = (slug: string | undefined, label: string) => {
@@ -94,7 +101,32 @@ export default function Search({ loaderData }: Route.ComponentProps) {
             ))}
           </NativeSelect>
         </label>
-        {kind !== "service" && kind !== "digital" ? (
+        {kind === "property" ? (
+          <>
+            <label className="flex items-center gap-2 text-sm">
+              Type
+              <NativeSelect name="listing" defaultValue={listingType ?? ""} className="w-auto">
+                <option value="">Any</option>
+                {LISTING_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="deed" value="1" defaultChecked={titleDeed} className="size-4 accent-primary" />
+              Title deed available
+            </label>
+            {FEATURE_FLAGS.filter((f) => ["backupPower", "waterTank", "masterEnsuite", "separateDining", "borehole"].includes(f.key)).map((f) => (
+              <label key={f.key} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="feature" value={f.key} defaultChecked={features.includes(f.key)} className="size-4 accent-primary" />
+                {f.label.split(" (")[0]}
+              </label>
+            ))}
+          </>
+        ) : null}
+        {kind !== "service" && kind !== "digital" && kind !== "property" ? (
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="instock" value="1" defaultChecked={inStock} className="size-4 accent-primary" />
             In stock only
@@ -103,19 +135,23 @@ export default function Search({ loaderData }: Route.ComponentProps) {
       </Form>
 
       <BannerSlot ads={banners.category_top} shape="leaderboard" className="mb-6" />
-      <div className={cn("grid gap-6", banners.sidebar?.length && "lg:grid-cols-[1fr_300px]")}>
-      {products.length ? (
-        <ProductGrid products={products} />
-      ) : (
-        <EmptyState icon={SearchXIcon} title="Nothing found">
-          Try another search, or{" "}
-          <Link to="/requests/new" className="font-semibold text-primary">
-            post a request
-          </Link>{" "}
-          and let merchants find it for you.
-        </EmptyState>
-      )}
-        <BannerSlot ads={banners.sidebar} shape="sidebar" className="sticky top-36 hidden self-start lg:block" />
+      {/* Results and the side ad are separate columns; the results column keeps its own height
+          (items-start), so a tall ad never stretches the product cards. */}
+      <div className={cn("grid items-start gap-6", banners.sidebar?.length && "lg:grid-cols-[minmax(0,1fr)_300px]")}>
+        <div className="min-w-0">
+          {products.length ? (
+            <ProductGrid products={products} />
+          ) : (
+            <EmptyState icon={SearchXIcon} title="Nothing found">
+              Try another search, or{" "}
+              <Link to="/requests/new" className="font-semibold text-primary">
+                post a request
+              </Link>{" "}
+              and let merchants find it for you.
+            </EmptyState>
+          )}
+        </div>
+        <BannerSlot ads={banners.sidebar} shape="sidebar" className="sticky top-36 hidden lg:block" />
       </div>
     </Container>
   );

@@ -1,5 +1,9 @@
 import {
   BabyIcon,
+  Building2Icon,
+  HouseIcon,
+  KeyRoundIcon,
+  LandPlotIcon,
   CakeIcon,
   CameraIcon,
   ChefHatIcon,
@@ -20,6 +24,10 @@ import {
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
+  house: HouseIcon,
+  land: LandPlotIcon,
+  key: KeyRoundIcon,
+  building: Building2Icon,
   smartphone: SmartphoneIcon,
   shirt: ShirtIcon,
   sofa: SofaIcon,

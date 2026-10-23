@@ -34,6 +34,7 @@ export default [
   route("account/favourites", "routes/account.favourites.tsx"),
   route("account/coupons", "routes/account.coupons.tsx"),
   route("account/ad-free", "routes/account.ad-free.tsx"),
+  route("account/offers", "routes/account.offers.tsx"),
 
   // Couriers
   route("courier", "routes/courier.tsx"),
@@ -65,6 +66,7 @@ export default [
       route("deals", "routes/sell.deals.tsx"),
       route("coupons", "routes/sell.coupons.tsx"),
       route("reviews", "routes/sell.reviews.tsx"),
+      route("offers", "routes/sell.offers.tsx"),
       route("alerts", "routes/sell.alerts.tsx"),
       route("plans", "routes/sell.plans.tsx"),
       route("store", "routes/sell.store.tsx"),

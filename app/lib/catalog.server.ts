@@ -1,6 +1,7 @@
-import { and, asc, desc, eq, gt, ilike, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
-import type { ProductKind, PromotionTier } from "~/db/schema";
+import type { ListingType, ProductKind, PromotionTier } from "~/db/schema";
+import { FEATURE_FLAGS } from "./property";
 import { cached } from "./cache.server";
 import { qualified } from "~/db/sql";
 import { saleColumns } from "./pricing.server";
@@ -71,6 +72,12 @@ const cardColumns = {
   storeSlug: stores.slug,
   currency: stores.currency,
   promoWeight: activePromo.weight,
+  // Real estate
+  listingType: products.listingType,
+  priceType: products.priceType,
+  biddingEndsAt: products.biddingEndsAt,
+  soldAt: products.soldAt,
+  propertyFeatures: products.propertyFeatures,
 };
 
 export type ProductCardData = Omit<
@@ -84,8 +91,8 @@ function baseQuery(where?: SQL) {
     .from(products)
     .innerJoin(stores, eq(stores.id, products.storeId))
     .leftJoin(activePromo, eq(activePromo.productId, products.id))
-    // Only approved stores are visible to shoppers.
-    .where(and(eq(products.isActive, true), eq(stores.status, "approved"), where));
+    // Only approved stores are visible to shoppers; archived listings (sold out or sold) are hidden.
+    .where(and(eq(products.isActive, true), isNull(products.archivedAt), eq(stores.status, "approved"), where));
 }
 
 function toCards(rows: Awaited<ReturnType<typeof baseQuery>>): ProductCardData[] {
@@ -114,13 +121,13 @@ const OVERDRAW = 4;
 
 /** Randomised storefront feed, prioritising paid promotions, spread across merchants. */
 export async function getFeed(limit = 24, where?: SQL) {
-  const rows = await baseQuery(where).orderBy(weightedRandom).limit(limit * OVERDRAW);
+  const rows = await baseQuery(and(isNull(products.soldAt), where)).orderBy(weightedRandom).limit(limit * OVERDRAW);
   return toCards(diversify(rows, 2, limit));
 }
 
 /** Only products with an active paid promotion: one per store per round, so every advertiser shows. */
 export async function getSponsored(limit = 8) {
-  const rows = await baseQuery(sql`${activePromo.weight} is not null`).orderBy(weightedRandom).limit(limit * OVERDRAW * 2);
+  const rows = await baseQuery(and(sql`${activePromo.weight} is not null`, isNull(products.soldAt))).orderBy(weightedRandom).limit(limit * OVERDRAW * 2);
   return toCards(diversify(rows, 1, limit));
 }
 
@@ -144,6 +151,10 @@ export async function searchProducts(opts: {
   ids?: string[];
   kind?: ProductKind;
   inStockOnly?: boolean;
+  listingType?: ListingType;
+  /** Property features that must be present, e.g. ["backupPower", "waterTank"]. */
+  features?: string[];
+  titleDeed?: boolean;
   sort?: SortKey;
   limit?: number;
 }) {
@@ -161,6 +172,11 @@ export async function searchProducts(opts: {
   if (opts.kind) filters.push(eq(products.kind, opts.kind));
   if (opts.ids) filters.push(inArray(products.id, opts.ids));
   if (opts.inStockOnly) filters.push(inStock);
+  if (opts.listingType) filters.push(eq(products.listingType, opts.listingType));
+  for (const f of opts.features ?? []) {
+    if (FEATURE_FLAGS.some((x) => x.key === f)) filters.push(sql`coalesce((${products.propertyFeatures} ->> ${f})::boolean, false)`);
+  }
+  if (opts.titleDeed) filters.push(eq(products.titleDeed, true));
 
   const order = {
     featured: weightedRandom,
@@ -187,4 +203,8 @@ export function getCategories() {
 /** Randomised bookable services, with paid promotions first. */
 export async function getServices(limit = 10) {
   return getFeed(limit, eq(products.kind, "service"));
+}
+
+export async function getProperties(limit = 10) {
+  return getFeed(limit, eq(products.kind, "property"));
 }
