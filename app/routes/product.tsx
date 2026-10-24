@@ -55,8 +55,10 @@ import { RatingBadge, RatingSummary, ReviewList, Stars } from "~/components/rati
 import { listReviews, ratingSummary } from "~/lib/reviews.server";
 import { BannerSlot } from "~/components/banner-ads";
 import { pageBanners } from "~/lib/banners.server";
+import { AutoSpecs } from "~/components/auto-specs";
 import { PropertyFeaturesList, PropertyPanel, PropertyPhotos, type OfferState } from "~/components/property-panel";
 import { makeOffer, myOfferOn, offerStats, PropertyError, withdrawOffer } from "~/lib/property.server";
+import { TrackView } from "~/components/tracker";
 import type { Route } from "./+types/product";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -690,6 +692,8 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
             </div>
           ) : null}
 
+          <TrackView storeId={product.store.id} productId={product.id} />
+          {product.autoDetails ? <AutoSpecs a={product.autoDetails} /> : null}
           {loaderData.property ? (
             <>
               <PropertyFeaturesList type={product.listingType} f={product.propertyFeatures} />

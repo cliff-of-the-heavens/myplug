@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Field, Input, NativeSelect, Textarea } from "~/components/ui/input";
 import { getUser } from "~/lib/auth.server";
 import { CAMPAIGN_STATUS_LABEL, MAX_WEEKS, NON_INTRUSIVE_POLICY } from "~/lib/banners";
+import { adStats } from "~/lib/analytics.server";
 import { BannerError, bannerSettings, cancelOwnCampaign, getPlacements, myCampaigns, requestCampaign, submitCampaignPayment } from "~/lib/banners.server";
 import { today } from "~/lib/dates";
 import { date, money } from "~/lib/format";
@@ -26,12 +27,14 @@ export const meta: Route.MetaFunction = () => [
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await getUser(request);
-  const [placements, settings, mine, payment] = await Promise.all([
+  const [placements, settings, mineRaw, payment] = await Promise.all([
     getPlacements({ activeOnly: true }),
     bannerSettings(),
     user ? myCampaigns(user.id) : [],
     getSetting("payment_instructions"),
   ]);
+  const stats = mineRaw.length ? await adStats(90, mineRaw.map((c) => c.id)) : [];
+  const mine = mineRaw.map((c) => ({ ...c, stats: stats.find((s) => s.id === c.id) ?? null }));
   return {
     placements,
     adsEmail: settings.adsEmail,
@@ -173,6 +176,11 @@ export default function Advertise({ loaderData, actionData }: Route.ComponentPro
                     {c.status === "approved" && c.startsAt && c.endsAt ? (
                       <p>
                         Runs {date(c.startsAt)} to {date(c.endsAt)} · {c.clicks} click{c.clicks === 1 ? "" : "s"}
+                      </p>
+                    ) : null}
+                    {c.stats ? (
+                      <p className="text-muted-foreground">
+                        Last 90 days: {c.stats.views.toLocaleString("en-US")} views · {c.stats.avgSeconds}s average on screen · {c.stats.ctr}% clicked
                       </p>
                     ) : null}
                     {c.adminNote ? <p className="text-muted-foreground">Admin: {c.adminNote}</p> : null}

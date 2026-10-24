@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { db, schema } from "~/db/client.server";
 import { requireMerchant } from "~/lib/auth.server";
 import { date, money } from "~/lib/format";
+import { storeViews } from "~/lib/analytics.server";
 import type { Route } from "./+types/sell.index";
 
 export const meta: Route.MetaFunction = () => [{ title: "Seller dashboard · MyPlug" }];
@@ -72,7 +73,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     .select({ followers: sql<number>`count(*)::int` })
     .from(schema.favourites)
     .where(eq(schema.favourites.storeId, user.storeId));
-  return { stock, orderStats, billStats, recent, currency: user.storeCurrency, storeSlug: user.storeSlug, followers };
+  const views = await storeViews(user.storeId!, 30);
+  return { stock, orderStats, billStats, recent, currency: user.storeCurrency, storeSlug: user.storeSlug, followers, views };
 }
 
 function Stat({
@@ -105,7 +107,7 @@ function Stat({
 }
 
 export default function SellOverview({ loaderData }: Route.ComponentProps) {
-  const { stock, orderStats, billStats, recent, currency, storeSlug, followers } = loaderData;
+  const { stock, orderStats, billStats, recent, currency, storeSlug, followers, views } = loaderData;
 
   return (
     <>
@@ -130,6 +132,9 @@ export default function SellOverview({ loaderData }: Route.ComponentProps) {
               {followers ? ` (${followers} already have)` : ""}.
             </p>
             <p className="font-mono text-xs break-all">/s/{storeSlug}</p>
+            <p className="text-sm">
+              <strong>{views.toLocaleString("en-US")}</strong> visit{views === 1 ? "" : "s"} to your store and listings in the last 30 days
+            </p>
           </div>
           <ShareButton path={`/s/${storeSlug}`} title="My store on MyPlug" text="Shop with us on MyPlug:" label="Share store link" variant="default" />
         </CardContent>

@@ -10,6 +10,8 @@ import { BannerSlot } from "~/components/banner-ads";
 import { pageBanners } from "~/lib/banners.server";
 import type { ListingType } from "~/db/schema";
 import { FEATURE_FLAGS, LISTING_TYPES } from "~/lib/property";
+import { AutoFilterFields, autoFiltersFromParams } from "~/components/auto-filters";
+import { AUTO_CATEGORY_SLUG } from "~/lib/auto";
 import type { Route } from "./+types/search";
 
 const SORTS: { value: SortKey; label: string }[] = [
@@ -18,6 +20,9 @@ const SORTS: { value: SortKey; label: string }[] = [
   { value: "price-asc", label: "Price: low to high" },
   { value: "price-desc", label: "Price: high to low" },
 ];
+
+/** The first chip of the submenu under each main menu tab. */
+const ALL_LABEL: Record<ProductKind, string> = { product: "All products", service: "All services", digital: "All downloads", property: "All real estate" };
 
 export function meta({ data }: Route.MetaArgs) {
   return [{ title: `${data?.heading ?? "Browse"} · MyPlug` }];
@@ -36,24 +41,31 @@ export async function loader({ request }: Route.LoaderArgs) {
   const kindParam = url.searchParams.get("kind");
   const kind: ProductKind | undefined =
     allCategories.find((c) => c.slug === category)?.kind ??
-    (kindParam === "service" || kindParam === "digital" || kindParam === "product" || kindParam === "property" ? kindParam : undefined);
+    (kindParam === "service" || kindParam === "digital" || kindParam === "product" || kindParam === "property"
+      ? kindParam
+      : // Browsing with nothing chosen means "All products"; a typed search looks everywhere.
+        q
+        ? undefined
+        : "product");
   // Real estate filters
   const listingParam = url.searchParams.get("listing");
   const listingType = kind === "property" && LISTING_TYPES.some((t) => t.value === listingParam) ? (listingParam as ListingType) : undefined;
   const features = kind === "property" ? url.searchParams.getAll("feature").filter((f) => FEATURE_FLAGS.some((x) => x.key === f)) : [];
   const titleDeed = kind === "property" && url.searchParams.get("deed") === "1";
+  // Vehicle and spare-part filters, on the Auto category only
+  const auto = category === AUTO_CATEGORY_SLUG ? autoFiltersFromParams(url.searchParams) : null;
 
-  const products = await searchProducts({ q, categorySlug: category, sort, kind, inStockOnly: inStock && kind === "product", listingType, features, titleDeed });
+  const products = await searchProducts({ q, categorySlug: category, sort, kind, inStockOnly: inStock && kind === "product", listingType, features, titleDeed, auto: auto ?? undefined });
   const categories = allCategories.filter((c) => (kind ? c.kind === kind : true));
   const categoryName = categories.find((c) => c.slug === category)?.name;
   const heading = q ? `Results for "${q}"` : (categoryName ?? (kind === "service" ? "Services" : kind === "digital" ? "Digital downloads" : kind === "property" ? "Real Estate" : "All products"));
 
   const banners = await pageBanners(request, ["category_top", "sidebar"]);
-  return { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed };
+  return { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto };
 }
 
 export default function Search({ loaderData }: Route.ComponentProps) {
-  const { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed } = loaderData;
+  const { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto } = loaderData;
   const submit = useSubmit();
 
   const chip = (slug: string | undefined, label: string) => {
@@ -80,7 +92,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
       <PageHeader title={heading} description={`${products.length} item${products.length === 1 ? "" : "s"}`} />
 
       <div className="scrollbar-none -mx-4 mb-4 flex gap-2 overflow-x-auto px-4">
-        {chip(undefined, "All")}
+        {chip(undefined, kind ? ALL_LABEL[kind] : "Everything")}
         {categories.map((c) => chip(c.slug, c.name))}
       </div>
 
@@ -101,6 +113,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
             ))}
           </NativeSelect>
         </label>
+        {auto ? <AutoFilterFields f={auto} base={`/search?category=${AUTO_CATEGORY_SLUG}${q ? `&q=${encodeURIComponent(q)}` : ""}`} /> : null}
         {kind === "property" ? (
           <>
             <label className="flex items-center gap-2 text-sm">

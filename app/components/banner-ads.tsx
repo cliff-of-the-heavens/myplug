@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import type { LiveBanner, TopShop } from "~/lib/banners.server";
 import { cn } from "~/lib/utils";
 import { SafeImage } from "./safe-image";
+import { useAdViewTime } from "./tracker";
 
 /** Small "Ad" label every paid banner carries, with a link to how ads work. */
 function AdLabel({ className }: { className?: string }) {
@@ -20,8 +21,10 @@ function AdLabel({ className }: { className?: string }) {
 
 /** One banner image; clicks go through /ad/:id so they're counted. */
 function BannerImage({ ad, className, eager = false }: { ad: LiveBanner; className?: string; eager?: boolean }) {
+  const viewRef = useAdViewTime(ad.id);
   const img = (
     <img
+      ref={viewRef as React.Ref<HTMLImageElement>}
       src={ad.creativeUrl}
       alt={ad.headline ?? "Advert"}
       width={ad.width ?? undefined}

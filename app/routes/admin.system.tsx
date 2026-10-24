@@ -9,6 +9,8 @@ import { requireAdmin } from "~/lib/auth.server";
 import { runDuePlans } from "~/lib/recurring.server";
 import { getRetentionSettings, retentionCandidates, runRetention, saveRetentionSettings } from "~/lib/retention.server";
 import { getListingRetention, runListingCleanup, saveListingRetention } from "~/lib/property.server";
+import { getImageSettings, saveImageSettings } from "~/lib/image-optimize.server";
+import { rollupAnalytics } from "~/lib/analytics.server";
 import {
   getStorageSettings,
   resolveBackend,
@@ -25,7 +27,7 @@ export const meta: Route.MetaFunction = () => [{ title: "System settings · Admi
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
-  const [{ backend, ftp }, retention, listings] = await Promise.all([getStorageSettings(), getRetentionSettings(), getListingRetention()]);
+  const [{ backend, ftp }, retention, listings, images] = await Promise.all([getStorageSettings(), getRetentionSettings(), getListingRetention(), getImageSettings()]);
   const candidates = await retentionCandidates(retention);
   return {
     backend,
@@ -35,6 +37,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     ftp: { ...ftp, password: undefined, hasPassword: !!ftp.password },
     retention,
     listings,
+    images,
     preview: {
       archive: candidates.toArchive.map((s) => s.name),
       warn: candidates.toWarn.map((s) => s.name),
@@ -92,6 +95,11 @@ export async function action({ request }: Route.ActionArgs) {
     return { ok: "Retention settings saved." };
   }
 
+  if (intent === "images") {
+    await saveImageSettings({ enabled: form.get("enabled") === "on", maxWidth: Number(form.get("maxWidth")) || 1600, quality: Number(form.get("quality")) || 80 });
+    return { ok: "Image settings saved. They apply to photos uploaded from now on." };
+  }
+
   if (intent === "listings") {
     const int = (name: string) => Math.min(3650, Math.max(1, Math.floor(Number(form.get(name)) || 1)));
     await saveListingRetention({ soldPropertyDays: int("soldPropertyDays"), soldOutDays: int("soldOutDays") });
@@ -100,6 +108,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "run-daily") {
     const [plans, retention, listings] = [await runDuePlans(), await runRetention(), await runListingCleanup()];
+    await rollupAnalytics();
     return {
       ok: `Done. Repeat orders: ${plans.created} deliveries created, ${plans.skipped} skipped. Stores: ${retention.archived} archived, ${retention.warned} warned, ${retention.deleted} deleted. Listings: ${listings.soldArchived + listings.soldOutArchived} archived, ${listings.deleted} deleted.`,
     };
@@ -115,7 +124,7 @@ const BACKENDS: { value: StorageBackend; label: string; text: string }[] = [
 ];
 
 export default function SystemSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { backend, activeBackend, blobConfigured, ftp, retention, preview, listings } = loaderData;
+  const { backend, activeBackend, blobConfigured, ftp, retention, preview, listings, images } = loaderData;
   const [choice, setChoice] = useState<StorageBackend>(backend);
   const busy = useNavigation().state !== "idle";
 
@@ -202,6 +211,35 @@ export default function SystemSettings({ loaderData, actionData }: Route.Compone
                 </Button>
               ) : null}
             </div>
+          </Form>
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle>Image optimisation</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            When on, every photo uploaded from now on (products, galleries, logos, requests, chat photos) is turned the right way up, shrunk to
+            the maximum width and saved as WebP: usually a fraction of the size of a phone photo, so pages load faster and storage lasts
+            longer. Photos already uploaded stay as they are. Banner ads, ID documents and payment proofs are never changed.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <Form method="post" className="grid gap-4 sm:grid-cols-3">
+            <input type="hidden" name="intent" value="images" />
+            <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-3">
+              <input type="checkbox" name="enabled" defaultChecked={images.enabled} className="size-4 accent-primary" />
+              Optimise uploaded images
+            </label>
+            <Field label="Maximum width (px)" hint="1600 suits most screens">
+              <Input name="maxWidth" type="number" min={320} max={4000} defaultValue={images.maxWidth} />
+            </Field>
+            <Field label="Quality (40–95)" hint="80 looks the same as the original to most people">
+              <Input name="quality" type="number" min={40} max={95} defaultValue={images.quality} />
+            </Field>
+            <Button type="submit" disabled={busy} className="self-end justify-self-start">
+              Save
+            </Button>
           </Form>
         </CardContent>
       </Card>

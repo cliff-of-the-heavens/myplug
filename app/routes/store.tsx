@@ -21,6 +21,7 @@ import { date } from "~/lib/format";
 import { Card, CardContent } from "~/components/ui/card";
 import { RatingSummary, ReviewList, Stars } from "~/components/rating";
 import { listReviews, ratingSummary } from "~/lib/reviews.server";
+import { TrackView } from "~/components/tracker";
 import type { Route } from "./+types/store";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -83,6 +84,7 @@ export default function StorePage({ loaderData }: Route.ComponentProps) {
             <ReportButton targetType="store" targetId={store.id} label="Report store" />
           </div>
         </div>
+        <TrackView storeId={store.id} />
         {store.description ? <p className="max-w-3xl text-muted-foreground">{store.description}</p> : null}
         {sales.length ? (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-highlight/25 px-4 py-3 text-sm font-semibold">

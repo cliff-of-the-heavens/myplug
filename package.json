@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "setup": "tsx scripts/setup.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
@@ -30,6 +31,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router": "^7.18.4",
+    "sharp": "^0.34.5",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.7"
   },

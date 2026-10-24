@@ -21,7 +21,7 @@ import {
   StoreIcon,
   UserIcon,
 } from "lucide-react";
-import { Form, Link, NavLink, useSearchParams, useSubmit } from "react-router";
+import { Form, Link, NavLink, useLocation, useSearchParams, useSubmit } from "react-router";
 import type { ProductKind } from "~/db/schema";
 import type { SessionUser } from "~/lib/auth.server";
 import { iconUrl } from "~/lib/brand";
@@ -292,38 +292,49 @@ export function SiteHeader({
       <div className="px-4 pb-3 md:hidden">
         <SearchBar categories={categories} />
       </div>
-      <nav className="brand-gradient">
-        <div className="scrollbar-none mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1.5 md:px-6">
-          <Link
-            to="/search?kind=service"
-            className="shrink-0 rounded-full bg-white/20 px-3 py-1 text-sm font-bold whitespace-nowrap text-white hover:bg-white/30"
-          >
-            Services
-          </Link>
-          <Link
-            to="/search?kind=digital"
-            className="shrink-0 rounded-full bg-white/20 px-3 py-1 text-sm font-bold whitespace-nowrap text-white hover:bg-white/30"
-          >
-            Downloads
-          </Link>
-          <Link
-            to="/search?kind=property"
-            className="shrink-0 rounded-full bg-white/20 px-3 py-1 text-sm font-bold whitespace-nowrap text-white hover:bg-white/30"
-          >
-            Real Estate
-          </Link>
-          {categories.filter((c) => c.kind === "product").map((c) => (
-            <Link
-              key={c.id}
-              to={`/search?category=${c.slug}`}
-              className="shrink-0 rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap text-white/90 hover:bg-white/15 hover:text-white"
-            >
-              {c.name}
-            </Link>
-          ))}
-        </div>
-      </nav>
+      <TopMenu categories={categories} />
     </header>
+  );
+}
+
+export const TOP_MENU: { kind: ProductKind; label: string }[] = [
+  { kind: "product", label: "All products" },
+  { kind: "service", label: "Services" },
+  { kind: "digital", label: "Downloads" },
+  { kind: "property", label: "Real Estate" },
+];
+
+/**
+ * The main menu: the four kinds of listing. Their categories appear as a submenu on the browse
+ * page, so they aren't repeated here. The active tab follows the page (a category belongs to its
+ * kind); browsing with nothing chosen means "All products".
+ */
+function TopMenu({ categories }: { categories: Category[] }) {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const onBrowse = location.pathname === "/search";
+  const fromCategory = categories.find((c) => c.slug === params.get("category"))?.kind;
+  const kind = params.get("kind") as ProductKind | null;
+  // A typed search with no menu chosen looks everywhere, so no tab is highlighted.
+  const active: ProductKind | null = !onBrowse ? null : (fromCategory ?? kind ?? (params.get("q") ? null : "product"));
+  return (
+    <nav className="brand-gradient" aria-label="Main menu">
+      <div className="scrollbar-none mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1.5 md:px-6">
+        {TOP_MENU.map((m) => (
+          <Link
+            key={m.kind}
+            to={`/search?kind=${m.kind}`}
+            aria-current={active === m.kind ? "page" : undefined}
+            className={cn(
+              "shrink-0 rounded-full px-4 py-1 text-sm font-bold whitespace-nowrap text-white transition-colors",
+              active === m.kind ? "bg-white text-primary shadow-sm" : "bg-white/15 hover:bg-white/30",
+            )}
+          >
+            {m.label}
+          </Link>
+        ))}
+      </div>
+    </nav>
   );
 }
 

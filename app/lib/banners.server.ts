@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { and, asc, avg, count, desc, eq, gt, gte, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
 import type { AdPlacement } from "~/db/schema";
+import { recordAdClick } from "./analytics.server";
 import { getUser } from "./auth.server";
 import { cached, invalidate } from "./cache.server";
 import { APP_TIME_ZONE, isDateStr, today } from "./dates";
@@ -142,6 +143,7 @@ export async function requestCampaign(user: { id: string; name: string; email: s
   const title = str(form.get("title")).slice(0, 80) || headline || "Banner ad";
   const creative = await storeCreative(form.get("creative"), placement);
   if (!creative) throw new BannerError("Attach your banner image.");
+  const link = linkUrl ?? (await advertiserStorePath(user.id));
   const [row] = await db
     .insert(adCampaigns)
     .values({
@@ -152,7 +154,7 @@ export async function requestCampaign(user: { id: string; name: string; email: s
       advertiserEmail: user.email,
       title,
       headline,
-      linkUrl,
+      linkUrl: link,
       creativeUrl: creative.url,
       creativeWidth: creative.width,
       creativeHeight: creative.height,
@@ -412,13 +414,13 @@ export type LiveBanner = { id: string; creativeUrl: string; headline: string | n
 /** Ads running now in a spot, in a fresh random order (so each advertiser gets a fair share). */
 export async function liveBanners(placementKey: string, limit = 5): Promise<LiveBanner[]> {
   const rows = await db
-    .select({ id: adCampaigns.id, creativeUrl: adCampaigns.creativeUrl, headline: adCampaigns.headline, width: adCampaigns.creativeWidth, height: adCampaigns.creativeHeight, linkUrl: adCampaigns.linkUrl })
+    .select({ id: adCampaigns.id, creativeUrl: adCampaigns.creativeUrl, headline: adCampaigns.headline, width: adCampaigns.creativeWidth, height: adCampaigns.creativeHeight, linkUrl: adCampaigns.linkUrl, advertiserId: adCampaigns.advertiserId })
     .from(adCampaigns)
     .innerJoin(adPlacements, eq(adPlacements.key, adCampaigns.placementKey))
     .where(and(eq(adCampaigns.placementKey, placementKey), eq(adPlacements.isActive, true), live()))
     .orderBy(sql`random()`)
     .limit(limit);
-  return rows.filter((r) => r.creativeUrl).map(({ linkUrl, creativeUrl, ...r }) => ({ ...r, creativeUrl: creativeUrl!, hasLink: !!linkUrl }));
+  return rows.filter((r) => r.creativeUrl).map(({ linkUrl, advertiserId, creativeUrl, ...r }) => ({ ...r, creativeUrl: creativeUrl!, hasLink: !!linkUrl || !!advertiserId }));
 }
 
 /** One random live ad for each requested spot, leaving out spots an ad-free pass hides. */
@@ -441,14 +443,23 @@ export async function pageBanners(request: Request, keys: string[]) {
   return bannersFor(keys, await userIsAdFree(user?.id));
 }
 
-/** Counts a click and returns where it goes. */
+/** Counts a click and returns where it goes: the ad's link, or the advertising merchant's store. */
 export async function trackClick(id: string) {
   const [row] = await db
     .update(adCampaigns)
     .set({ clicks: sql`${adCampaigns.clicks} + 1` })
     .where(and(eq(adCampaigns.id, id), live()))
-    .returning({ linkUrl: adCampaigns.linkUrl });
-  return row?.linkUrl ?? null;
+    .returning({ linkUrl: adCampaigns.linkUrl, advertiserId: adCampaigns.advertiserId });
+  if (!row) return null;
+  await recordAdClick(id).catch((e) => console.error("ad click analytics", e));
+  return row.linkUrl ?? (await advertiserStorePath(row.advertiserId));
+}
+
+/** The store page of a merchant who booked an ad (null for customers and outside advertisers). */
+async function advertiserStorePath(userId: string | null) {
+  if (!userId) return null;
+  const s = await db.query.stores.findFirst({ where: and(eq(stores.ownerId, userId), eq(stores.status, "approved")), columns: { slug: true } });
+  return s ? `/s/${s.slug}` : null;
 }
 
 export async function userIsAdFree(userId: string | undefined) {

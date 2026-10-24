@@ -1,9 +1,11 @@
 import {
   BellRingIcon,
   BikeIcon,
+  ChartColumnIcon,
   FlagIcon,
   HardDriveIcon,
   ImageIcon,
+  LayersIcon,
   LayoutDashboardIcon,
   MegaphoneIcon,
   SettingsIcon,
@@ -27,12 +29,14 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
   const { counts } = loaderData;
   const nav = [
     { to: "/admin", label: "Overview", icon: LayoutDashboardIcon, end: true },
+    { to: "/admin/analytics", label: "Analytics", icon: ChartColumnIcon },
     { to: "/admin/merchants", label: "Merchants", icon: StoreIcon, badge: counts.pendingMerchants + counts.pendingLicenses },
     { to: "/admin/couriers", label: "Couriers", icon: BikeIcon, badge: counts.pendingCouriers },
     { to: "/admin/customers", label: "Customers", icon: UsersIcon },
     { to: "/admin/ads", label: "Product boosts", icon: MegaphoneIcon, end: true, badge: counts.adsToQuote + counts.paymentsToVerify },
     { to: "/admin/ads/settings", label: "Boost bands & payment", icon: SettingsIcon },
     { to: "/admin/banners", label: "Banner ads", icon: ImageIcon, badge: counts.banners },
+    { to: "/admin/bands", label: "Listing plans", icon: LayersIcon, badge: counts.bandPayments },
     { to: "/admin/alerts", label: "Email alerts", icon: BellRingIcon },
     { to: "/admin/moderation", label: "Moderation", icon: FlagIcon, badge: counts.openReports },
     { to: "/admin/reviews", label: "Reviews", icon: StarIcon, badge: counts.flaggedReviews },

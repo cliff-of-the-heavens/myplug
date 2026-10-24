@@ -188,3 +188,12 @@ export function safeRedirect(to: FormDataEntryValue | string | null | undefined,
   if (!to || typeof to !== "string" || !to.startsWith("/") || to.startsWith("//")) return fallback;
   return to;
 }
+
+/**
+ * The signed-in user's id straight from the session cookie, without a database lookup.
+ * Only for low-stakes uses like analytics; anything that grants access must use getUser.
+ */
+export async function sessionUserId(request: Request) {
+  const session = await getSession(request);
+  return session.get("userId") ?? null;
+}

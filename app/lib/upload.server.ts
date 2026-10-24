@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { optimizeImage } from "./image-optimize.server";
 import { StorageError, storeFile, storePrivateFile } from "./storage.server";
 
 // Vercel functions reject request bodies over 4.5 MB, so keep uploads below that.
@@ -19,7 +20,7 @@ export class UploadError extends Error {}
  * Returns null when no file was chosen.
  */
 export function uploadImage(file: FormDataEntryValue | null, folder: string) {
-  return uploadFile(file, folder, IMAGE_TYPES, "Images must be JPG, PNG, WebP or GIF.");
+  return uploadFile(file, folder, IMAGE_TYPES, "Images must be JPG, PNG, WebP or GIF.", { optimize: true });
 }
 
 /** Like uploadImage, but also accepts PDFs. */
@@ -32,15 +33,18 @@ async function uploadFile(
   folder: string,
   allowed: Record<string, string>,
   typeError: string,
+  { optimize = false } = {},
 ): Promise<string | null> {
   if (!file || typeof file === "string" || file.size === 0) return null;
 
-  const ext = allowed[file.type];
-  if (!ext) throw new UploadError(typeError);
+  const type = allowed[file.type];
+  if (!type) throw new UploadError(typeError);
   if (file.size > MAX_IMAGE_BYTES) throw new UploadError("Files must be 4 MB or smaller.");
+  // Public photos are resized and converted to WebP when the admin has switched it on.
+  const { file: toStore, ext } = optimize ? await optimizeImage(file, type) : { file, ext: type };
 
   try {
-    return await storeFile(`${folder}/${randomUUID()}.${ext}`, file);
+    return await storeFile(`${folder}/${randomUUID()}.${ext}`, toStore);
   } catch (e) {
     if (e instanceof StorageError) throw new UploadError(e.message);
     throw e;

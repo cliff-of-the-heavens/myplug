@@ -6,6 +6,10 @@ chat with sellers, and post photos of things they want made or sourced.
 **Stack:** React Router v7 framework mode (the successor to Remix) · Neon Postgres + Drizzle ORM ·
 Tailwind v4 + shadcn/ui components · Vercel Blob for images · deployed on Vercel · installable PWA.
 
+> **Documentation:** [Deployment guide](DEPLOYMENT.md) · [User manual](docs/USER-MANUAL.md) ·
+> [Technical manual](docs/TECHNICAL-MANUAL.md) · Marketing: [poster](docs/marketing/MyPlug-poster.pdf),
+> [brochure](docs/marketing/MyPlug-brochure.pdf) (edit the `.html` files beside them, then print to PDF).
+
 ## Requirements → where they live
 
 | # | Requirement | Implementation |
@@ -58,6 +62,13 @@ Tailwind v4 + shadcn/ui components · Vercel Blob for images · deployed on Verc
 | 46 | Negotiable, non-negotiable or reserve price (with bidding end date) | `price_type`, `reserve_price_cents` (secret), `bidding_ends_at` |
 | 47 | Customers make offers; merchant picks the buyer; sold → archived next day → deleted | `property_offers`; Seller → Property offers, `/account/offers`, `runListingCleanup()` |
 | 48 | Products can be archived when sold out, then deleted after a retention period | `products.archive_when_sold_out`, `archived_at`; Admin → System settings |
+| 49 | Main menu of kinds, categories as its submenu (default All products) | `TopMenu` in `site-header.tsx`; chips on `/search` |
+| 50 | Vehicles and spare parts with full details and filters (Auto) | `products.auto_details`, `app/lib/auto.ts`; Auto filters on `/search?category=auto` |
+| 51 | Admin-set listing plans (item limits and prices per store) | `listing_bands`, `band_requests`; Admin → Listing plans, Seller → Store plan |
+| 52 | Admin sets the number of photos per listing | setting `max_product_photos`; Admin → Listing plans |
+| 53 | Optional image optimisation (WebP, resize) | `app/lib/image-optimize.server.ts` (`sharp`); Admin → System settings |
+| 54 | Visitor, store-frequenting and ad analytics, monthly summaries, retention | `analytics_*` tables, `/api/t`, Admin → Analytics |
+| 55 | Merchants' banner ads link to their store | `trackClick()` / `requestCampaign()` in `banners.server.ts` |
 
 ## Getting started
 
@@ -65,7 +76,7 @@ Tailwind v4 + shadcn/ui components · Vercel Blob for images · deployed on Verc
 npm install
 cp .env.example .env          # fill in DATABASE_URL (Neon) and SESSION_SECRET
 npm run db:migrate            # creates the tables from drizzle/0000_init.sql
-npm run db:seed               # categories, admin, demo merchants/products/orders
+npm run db:seed               # demo data for local testing: categories, admin, demo shops/products/orders
 npm run dev
 ```
 
@@ -76,20 +87,44 @@ before seeding production. Demo product photos are random placeholders from pics
 
 After changing `app/db/schema.ts`, run `npm run db:generate` then `npm run db:migrate`.
 
-## Deploying to Vercel
+## Deploying to Vercel (Hobby plan) with Neon
 
-1. Push to GitHub and import the repo in Vercel (the framework is detected automatically;
-   `@vercel/react-router` is already configured in `react-router.config.ts`).
-2. **Storage → Neon**: adds `DATABASE_URL`.
-3. **Storage → Blob**: adds `BLOB_READ_WRITE_TOKEN`. Without it, image uploads fail in production; in
-   local dev they fall back to `public/uploads`.
-4. Add `SESSION_SECRET` (e.g. `openssl rand -hex 32`), plus `RESEND_API_KEY`, `EMAIL_FROM` (a sender on a
-   domain verified in Resend), `APP_URL` (your site's URL, for links in emails) and `CRON_SECRET`.
-5. Run `npm run db:migrate` (and `db:seed` once) against the production `DATABASE_URL`.
+1. **Import the repo** in Vercel (*Add New → Project*). React Router is detected automatically, and
+   `@vercel/react-router` is already configured. Leave the build settings alone.
+2. **Storage → Neon** (pick a region near your users, e.g. Frankfurt or Johannesburg): adds `DATABASE_URL`.
+3. **Storage → Blob**: adds `BLOB_READ_WRITE_TOKEN`. Without it, image uploads fail in production.
+4. **Settings → Environment Variables**:
+   - `SESSION_SECRET`: a random string of 32+ characters (`openssl rand -hex 32`)
+   - `APP_URL`: your site address, e.g. `https://myplug.vercel.app` (links in emails)
+   - `CRON_SECRET`: another random string (protects the daily job)
+   - `RESEND_API_KEY` and `EMAIL_FROM` (a sender on a domain verified in Resend). Without them no email is
+     sent, so password reset doesn't work.
+5. **Create the tables and your admin**, from your computer: put the production `DATABASE_URL` in `.env`
+   (it's git-ignored), then:
+
+   ```bash
+   npm run db:migrate
+   npm run setup -- --email you@example.com --name "Your Name"   # asks for the password (12+ characters)
+   ```
+
+   `setup` adds the product categories and one admin account. It adds **no demo data**, and it's safe to
+   re-run: it never changes an existing account. (`db:seed` is for local testing only.)
+6. **Redeploy**, sign in as the admin, then set the payment instructions (*Admin → Boost bands & payment*),
+   the storage backend and retention periods (*Admin → System settings*), and the ads email and prices
+   (*Admin → Banner ads → Spots, prices & hero panel*).
+
+**Scheduled job.** The Hobby plan allows one scheduled run a day, so `vercel.json` has a single job,
+`/api/cron/daily` at 03:00 UTC (05:00 in Malawi; Hobby may run it any time within that hour). It handles
+repeat-order deliveries, inactive stores, sold/sold-out listing clean-up, "bidding closed" notices, and the
+rest of the alert emails. On a Pro plan you can add `/api/cron/alerts` every 15 minutes for faster large
+mailings.
+
+**Later updates.** When a new migration file appears in `drizzle/`, run `npm run db:migrate` against the
+production database before (or right after) deploying.
 
 ## Currency and images
 
-- **Currency.** Each store picks its currency under *Seller → Store settings*; new stores default to
+- **Currency.** Admins set each store's currency under *Admin → Merchants*; new stores default to
   **MWK (Malawian Kwacha, shown as "MK")**. Prices are stored in minor units (tambala/cents) in `bigint`
   columns, because kwacha amounts outgrow a 32-bit integer. Each order records the currency it was placed in,
   so changing the store's currency later doesn't relabel past orders. Changing it doesn't convert prices
@@ -147,9 +182,9 @@ Ad prices are in MWK. Changing a band's price only affects new invoices. To take
   store's alerts and preview any email that was sent. Restock alerts need the item in stock, and discount
   alerts need a real discount.
 - **Sending** uses [Resend](https://resend.com) (`RESEND_API_KEY`). Without a key, emails are only logged
-  on the server. The first 100 go out immediately, and `/api/cron/alerts` (Vercel Cron, see `vercel.json`;
-  protected by `CRON_SECRET`) sends the rest and retries failures. Every-15-minutes crons need a Vercel Pro
-  plan; on Hobby, change the schedule to daily.
+  on the server. The first 100 go out immediately; the daily job (`/api/cron/daily`, protected by
+  `CRON_SECRET`) sends the rest and retries failures. On a Vercel Pro plan, also schedule
+  `/api/cron/alerts` every 15 minutes so large lists go out faster.
 
 ## Services and bookings
 
@@ -539,6 +574,55 @@ admin sets under **Admin → System settings → Sold and sold-out listings** (d
 **Archive when sold out (normal products):** a merchant can tick this on any product whose stock they count.
 At zero it's archived and hidden; restocking brings it back. Otherwise it's deleted after the admin's
 retention period. Order history keeps item names and prices, because order lines are snapshots.
+
+## Auto: vehicles and spare parts
+
+Listings in the **Auto** category get an extra section in the listing form:
+
+- **Vehicles:** make (common makes list), model (with suggestions), grade, year, mileage, engine cc,
+  transmission, fuel, drive, steering, body type, colour, seats, doors, the last 6 characters of the chassis
+  number (never the full number), condition, duty paid, in the country or being imported, location, and a
+  features checklist. The product page shows a spec sheet like BE FORWARD or SBT; cards show
+  "2015 · 68,000 km · Automatic · Petrol".
+- **Spare parts:** part category, part number, OEM number, brand, position, condition, and up to 10 vehicles
+  it fits (make, model, year range).
+- **Filters** (on the Auto category): Vehicles (make, model, year from/to, mileage, gearbox, fuel, body) or
+  Spare parts (category, and **parts that fit my vehicle**: make, model, year). Part numbers can be typed in
+  the main search, with or without dashes.
+
+## Listing plans and photos
+
+*Admin → Listing plans* defines plans by number of listings (seeded: **Starter 25 free** (default),
+Growth 150, Business 1,000, Unlimited), each with a monthly price. A store without a paid plan uses the
+default. Merchants see their usage and upgrade under *Seller → Store plan* (request → pay → admin
+approves; renewals extend the end date). When a paid plan ends, the store falls back to the default:
+existing listings stay, but new ones are refused beyond the limit. Archived listings don't count. Admins can
+also set a store's plan directly under *Merchants*. The same page sets **photos per listing** (1–30,
+default 8).
+
+## Image optimisation
+
+*Admin → System settings → Image optimisation.* When on, public photos uploaded from then on are rotated
+upright, resized to the maximum width (default 1600 px) and saved as WebP at the chosen quality (default
+80), using `sharp` (loaded only when used). GIFs, files that wouldn't shrink and unreadable files are stored
+as they are. Banner ads, ID documents and payment proofs are never changed.
+
+## Analytics
+
+Built so it can't slow the site. Nothing is recorded while a page renders: `app/components/tracker.tsx`
+batches events in the browser and sends them with `navigator.sendBeacon` when the page is hidden, or every 30
+seconds. `/api/t` turns a batch into at most three upserts into counter tables. Bots, Do Not Track /
+Global Privacy Control visitors, and everything when switched off, cost nothing.
+
+- **Recorded:** page views, unique visitors per day, store and listing views, which stores each visitor
+  frequents per month (signed-in visitors linked to their account, shown only to admins), and banner ad
+  views (at least half visible for a second), time on screen and clicks.
+- **Reports:** *Admin → Analytics* (7/30/90 days, top stores and listings, ad performance, frequent
+  customers, monthly summary). Merchants see their store's 30-day visits on their dashboard and their
+  banner's views, time on screen and clicks on the Advertise page.
+- **Retention:** day-by-day detail (default 90 days) is rolled into monthly totals by the daily job;
+  who-visits-which-store kept 12 months, monthly totals 36 months; all adjustable. The Terms of Use disclose
+  this.
 
 ## Not yet built (good next steps)
 

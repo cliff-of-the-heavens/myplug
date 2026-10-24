@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import type { ProductCardData } from "~/lib/catalog.server";
 import { money, stockLabel } from "~/lib/format";
 import { LISTING_BADGE, priceSuffix, soldWord } from "~/lib/property";
+import { autoSummary } from "~/lib/auto";
 import { cn } from "~/lib/utils";
 import { DealCountdown, priceDisplay } from "./price";
 import { RatingBadge } from "./rating";
@@ -75,6 +76,7 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
           {product.storeName}
           <RatingBadge average={product.ratingAvg} total={product.ratingCount} />
         </p>
+        {product.autoDetails ? <p className="truncate text-xs text-muted-foreground">{autoSummary(product.autoDetails)}</p> : null}
         {product.kind === "property" && product.propertyFeatures ? (
           <p className="truncate text-xs text-muted-foreground">
             {[

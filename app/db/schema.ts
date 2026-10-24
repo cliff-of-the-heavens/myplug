@@ -172,6 +172,9 @@ export const stores = pgTable("stores", {
   couponMaxCents: money("coupon_max_cents"),
   couponValidityDays: integer("coupon_validity_days").notNull().default(365),
   deletionWarnedAt: timestamp("deletion_warned_at", { withTimezone: true }), // owner emailed before automatic deletion
+  // Listing plan: how many items the store may list (null = the admin's default band)
+  listingBandId: uuid("listing_band_id").references((): AnyPgColumn => listingBands.id, { onDelete: "set null" }),
+  bandPaidUntil: timestamp("band_paid_until", { withTimezone: true }), // paid bands fall back to the default after this
   reviewNote: text("review_note"), // admin's reason when rejecting/suspending
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   ...timestamps,
@@ -224,6 +227,7 @@ export const products = pgTable(
     biddingNoticeAt: timestamp("bidding_notice_at", { withTimezone: true }), // merchant told that bidding closed
     titleDeed: boolean("title_deed"), // land and houses for sale: is a title deed available?
     propertyFeatures: jsonb("property_features").$type<PropertyFeatures>(),
+    autoDetails: jsonb("auto_details").$type<AutoDetails>(), // Auto category: vehicle spec sheet or spare-part details
     soldAt: timestamp("sold_at", { withTimezone: true }), // property sold or let to the accepted offer
     ...timestamps,
   },
@@ -759,6 +763,8 @@ export const adFreePasses = pgTable("ad_free_passes", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export type { AutoDetails } from "../lib/auto";
+import type { AutoDetails } from "../lib/auto";
 export type ListingType = "land" | "house" | "rental";
 export type PriceType = "negotiable" | "fixed" | "reserve";
 export type PropertyFeatures = {
@@ -799,6 +805,97 @@ export const propertyOffers = pgTable(
     ...timestamps,
   },
   (t) => [uniqueIndex("property_offers_product_customer_idx").on(t.productId, t.customerId), index("property_offers_product_idx").on(t.productId, t.status)],
+);
+
+/** Store plans by number of listings, set by the admin (e.g. Starter 25 free, Growth 150 for a monthly fee). */
+export const listingBands = pgTable("listing_bands", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  maxItems: integer("max_items"), // null = unlimited
+  monthlyCents: money("monthly_cents").notNull().default(0),
+  isDefault: boolean("is_default").notNull().default(false), // what every store gets without paying
+  isActive: boolean("is_active").notNull().default(true),
+  position: integer("position").notNull().default(0),
+});
+
+/** A merchant asking (and paying) for a bigger listing plan. */
+export const bandRequests = pgTable(
+  "band_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(), // LP-XXXXXX, the payment reference
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    bandId: uuid("band_id")
+      .notNull()
+      .references(() => listingBands.id, { onDelete: "cascade" }),
+    months: integer("months").notNull(),
+    amountCents: money("amount_cents").notNull(),
+    status: text("status").$type<"requested" | "payment_submitted" | "approved" | "rejected">().notNull().default("requested"),
+    paymentReference: text("payment_reference"),
+    proofUrl: text("proof_url"),
+    adminNote: text("admin_note"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("band_requests_store_idx").on(t.storeId, t.status)],
+);
+
+/**
+ * Site analytics, kept as small counters rather than one row per visit. `metric` is e.g.
+ * "pageviews", "visitors", "store_views", "product_views", "ad_views", "ad_ms", "ad_clicks";
+ * `subject` is the store, product or ad it's about ("" for site-wide totals).
+ * Daily rows are rolled into analytics_monthly after the admin's retention period.
+ */
+export const analyticsDaily = pgTable(
+  "analytics_daily",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    metric: text("metric").notNull(),
+    subject: text("subject").notNull().default(""),
+    count: bigint("count", { mode: "number" }).notNull().default(0),
+    ms: bigint("ms", { mode: "number" }).notNull().default(0), // time on screen (ads)
+  },
+  (t) => [primaryKey({ columns: [t.day, t.metric, t.subject] })],
+);
+
+export const analyticsMonthly = pgTable(
+  "analytics_monthly",
+  {
+    month: date("month", { mode: "string" }).notNull(), // first day of the month
+    metric: text("metric").notNull(),
+    subject: text("subject").notNull().default(""),
+    count: bigint("count", { mode: "number" }).notNull().default(0),
+    ms: bigint("ms", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.month, t.metric, t.subject] })],
+);
+
+/** Anonymous visitor ids seen each day, only to count unique visitors (kept 2 days). */
+export const analyticsVisitors = pgTable(
+  "analytics_visitors",
+  {
+    day: date("day", { mode: "string" }).notNull(),
+    visitorId: text("visitor_id").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.day, t.visitorId] })],
+);
+
+/** Which stores each visitor frequents, per month (signed-in visitors are linked to their account). */
+export const visitorStoreMonthly = pgTable(
+  "visitor_store_monthly",
+  {
+    month: date("month", { mode: "string" }).notNull(),
+    visitorKey: text("visitor_key").notNull(), // "u:<userId>" or "a:<anonymous id>"
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    visits: integer("visits").notNull().default(0),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.month, t.visitorKey, t.storeId] }), index("visitor_store_monthly_store_idx").on(t.storeId, t.month)],
 );
 
 /** Small key/value store for admin-editable platform settings. */
@@ -1135,6 +1232,7 @@ export const storesRelations = relations(stores, ({ one, many }) => ({
   subscriptions: many(storeSubscriptions),
   licenses: many(businessLicenses),
   preferredCourier: one(couriers, { fields: [stores.preferredCourierId], references: [couriers.id] }),
+  listingBand: one(listingBands, { fields: [stores.listingBandId], references: [listingBands.id] }),
 }));
 
 export const storeSubscriptionsRelations = relations(storeSubscriptions, ({ one }) => ({
@@ -1240,6 +1338,11 @@ export const adFreePassesRelations = relations(adFreePasses, ({ one }) => ({
 export const propertyOffersRelations = relations(propertyOffers, ({ one }) => ({
   product: one(products, { fields: [propertyOffers.productId], references: [products.id] }),
   customer: one(users, { fields: [propertyOffers.customerId], references: [users.id] }),
+}));
+
+export const bandRequestsRelations = relations(bandRequests, ({ one }) => ({
+  store: one(stores, { fields: [bandRequests.storeId], references: [stores.id] }),
+  band: one(listingBands, { fields: [bandRequests.bandId], references: [listingBands.id] }),
 }));
 
 export const productImagesRelations = relations(productImages, ({ one }) => ({

@@ -1,5 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
-import { data, Form, useNavigation, useRouteLoaderData } from "react-router";
+import { data, Form, Link, useNavigation, useRouteLoaderData } from "react-router";
 import { useState } from "react";
 import { AlertFields } from "~/components/alert-composer";
 import { DigitalFields } from "~/components/digital-fields";
@@ -12,6 +12,9 @@ import { Field, Input, NativeSelect, Textarea } from "~/components/ui/input";
 import { db, schema } from "~/db/client.server";
 import { alertType as alertTypeEnum, mediaType as mediaTypeEnum, type AlertType, type ListingType, type MediaType, type PriceType, type ProductKind, type PropertyFeatures } from "~/db/schema";
 import { PropertyFields } from "~/components/property-fields";
+import { AutoFields } from "~/components/auto-fields";
+import { AUTO_CATEGORY_SLUG, autoFromForm, type AutoDetails } from "~/lib/auto";
+import { assertCanAddListing, BandError, maxPhotos, storePlan } from "~/lib/bands.server";
 import { featuresFromForm, LISTING_TYPES, needsTitleDeed, PRICE_TYPES } from "~/lib/property";
 import { DigitalError, offersFromForm, saveDigital } from "~/lib/digital.server";
 import { ALERT_NAME } from "~/lib/alerts";
@@ -28,7 +31,6 @@ export function meta({ data }: Route.MetaArgs) {
   return [{ title: `${data?.product ? "Edit" : "New"} listing · MyPlug` }];
 }
 
-const MAX_GALLERY = 8;
 
 async function ownProduct(storeId: string, id: string) {
   const product = await db.query.products.findFirst({
@@ -57,13 +59,23 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const directUploads = resolveBackend(backend) === "blob";
   // Never send the private file's storage key to the browser.
   const safeProduct = product ? { ...product, mediaKey: undefined, hasMedia: !!product.mediaKey } : null;
-  return { product: safeProduct, kind, currency: user.storeCurrency, quota, counts, directUploads };
+  const [photoLimit, plan] = await Promise.all([maxPhotos(), storePlan(user.storeId)]);
+  return { product: safeProduct, kind, currency: user.storeCurrency, quota, counts, directUploads, photoLimit, plan: { name: plan.band?.name ?? "", used: plan.used, limit: plan.limit } };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
   const user = await requireMerchant(request);
   const existing = params.id ? await ownProduct(user.storeId, params.id) : null;
   const form = await request.formData();
+  if (!existing) {
+    try {
+      await assertCanAddListing(user.storeId);
+    } catch (e) {
+      if (e instanceof BandError) return { error: e.message };
+      throw e;
+    }
+  }
+  const photoLimit = await maxPhotos();
 
   const kindValue = str(form.get("kind"));
   const kind: ProductKind = kindValue === "service" || kindValue === "digital" || kindValue === "property" ? kindValue : "product";
@@ -131,12 +143,22 @@ export async function action({ request, params }: Route.ActionArgs) {
     }
     property = { listingType, priceType, reservePriceCents, biddingEndsAt, titleDeed, propertyFeatures };
   }
+  let autoDetails: AutoDetails | null = null;
+  const categoryId = /^[0-9a-f-]{36}$/i.test(str(form.get("categoryId"))) ? str(form.get("categoryId")) : null;
+  if (kind === "product" && categoryId) {
+    const cat = await db.query.categories.findFirst({ where: eq(schema.categories.id, categoryId), columns: { slug: true } });
+    if (cat?.slug === AUTO_CATEGORY_SLUG) {
+      const parsed = autoFromForm(form);
+      if (typeof parsed === "string") return { error: parsed };
+      autoDetails = parsed;
+    }
+  }
   // Gallery/portfolio photos were uploaded one by one; accept only URLs of files we stored.
   const gallery: { url: string; section: string | null }[] = [];
   const sections: [string, string | null][] =
     property && property.listingType !== "land" ? [["galleryExterior", "exterior"], ["galleryInterior", "interior"]] : [["gallery", null]];
   for (const [field, section] of sections) {
-    for (const url of form.getAll(field).map(String).slice(0, MAX_GALLERY)) {
+    for (const url of form.getAll(field).map(String).slice(0, photoLimit)) {
       if (await isOwnUpload(url)) gallery.push({ url, section });
     }
   }
@@ -175,6 +197,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     ...(property && property.biddingEndsAt?.getTime() !== existing?.biddingEndsAt?.getTime() ? { biddingNoticeAt: null } : {}),
     titleDeed: property?.titleDeed ?? null,
     propertyFeatures: property?.propertyFeatures ?? null,
+    autoDetails,
     dailyCapacity,
     references: kind === "service" ? str(form.get("references")).slice(0, 3000) || null : null,
     isActive: form.get("isActive") === "on",
@@ -234,6 +257,7 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
   const { product, currency, quota, counts } = loaderData;
   const [kind, setKind] = useState<ProductKind>(loaderData.kind);
   const [alwaysInStock, setAlwaysInStock] = useState(product ? !product.trackStock : false);
+  const [categoryId, setCategoryId] = useState(product?.categoryId ?? "");
   const categories = (useRouteLoaderData<typeof rootLoader>("root")?.categories ?? []).filter((c) => c.kind === kind);
   const isService = kind === "service";
   const isProperty = kind === "property";
@@ -243,6 +267,14 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
   return (
     <>
       <PageHeader title={product ? `Edit ${isService ? "service" : isProperty ? "property" : "product"}` : "New listing"} />
+      {!product && loaderData.plan.limit != null ? (
+        <p className={cn("mb-4 rounded-xl px-3 py-2 text-sm", loaderData.plan.used >= loaderData.plan.limit ? "bg-destructive/10 text-destructive" : "bg-muted")}>
+          {loaderData.plan.name} plan: {loaderData.plan.used} of {loaderData.plan.limit} listings used.{" "}
+          <Link to="/sell/plan" className="font-semibold underline">
+            {loaderData.plan.used >= loaderData.plan.limit ? "Upgrade to add more" : "See plans"}
+          </Link>
+        </p>
+      ) : null}
       <Card>
         <CardContent className="pt-5">
           <Form method="post" encType="multipart/form-data" className="grid gap-5 md:grid-cols-[16rem_1fr]">
@@ -296,7 +328,7 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
                 </Field>
               ) : null}
               <Field label="Category">
-                <NativeSelect key={kind} name="categoryId" defaultValue={product?.categoryId ?? ""}>
+                <NativeSelect key={kind} name="categoryId" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
                   <option value="">Uncategorised</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -305,10 +337,11 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
                   ))}
                 </NativeSelect>
               </Field>
+              {kind === "product" && categories.find((c) => c.id === categoryId)?.slug === AUTO_CATEGORY_SLUG ? <AutoFields d={product?.autoDetails ?? null} /> : null}
               {isProperty ? (
                 <PropertyFields
                   currency={currency}
-                  max={MAX_GALLERY}
+                  max={loaderData.photoLimit}
                   d={{
                     listingType: product?.listingType ?? null,
                     priceType: product?.priceType ?? null,
@@ -412,8 +445,8 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
               </fieldset>
               )}
               {!isProperty ? (
-                <Field label={isService ? "Portfolio: photos of your work" : "More photos"} hint="Up to 8. Drag & drop several at once.">
-                  <GalleryField initial={product?.images.map((i) => i.url) ?? []} max={MAX_GALLERY} />
+                <Field label={isService ? "Portfolio: photos of your work" : "More photos"} hint={`Up to ${loaderData.photoLimit}. Drag & drop several at once.`}>
+                  <GalleryField initial={product?.images.map((i) => i.url) ?? []} max={loaderData.photoLimit} />
                 </Field>
               ) : null}
               <AlertFields quota={quota} counts={counts} />

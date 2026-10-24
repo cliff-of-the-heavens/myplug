@@ -17,6 +17,7 @@ import { LicenseError, reviewLicense } from "~/lib/business.server";
 import { today } from "~/lib/dates";
 import { CURRENCIES, date, isCurrency } from "~/lib/format";
 import { cn, isUuid, str } from "~/lib/utils";
+import { adminSetBand, BandError, listBands } from "~/lib/bands.server";
 import type { Route } from "./+types/admin.merchants";
 
 export const meta: Route.MetaFunction = () => [{ title: "Merchants · Admin · MyPlug" }];
@@ -34,6 +35,8 @@ export async function loader({ request }: Route.LoaderArgs) {
       storeId: stores.id,
       registrationNumber: stores.registrationNumber,
       currency: stores.currency,
+      listingBandId: stores.listingBandId,
+      bandPaidUntil: stores.bandPaidUntil,
       storeName: stores.name,
       slug: stores.slug,
       logoUrl: stores.logoUrl,
@@ -67,12 +70,25 @@ export async function loader({ request }: Route.LoaderArgs) {
         columns: { documentKey: false },
       })
     : [];
-  return { merchants, licenses, filter, q, today: today() };
+  return { merchants, licenses, filter, q, today: today(), bands: await listBands() };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const admin = await requireAdmin(request);
   const form = await request.formData();
+  if (form.get("intent") === "band") {
+    const storeId = String(form.get("storeId"));
+    const bandId = String(form.get("bandId") ?? "");
+    if (!isUuid(storeId)) return { error: "Store not found." };
+    try {
+      await adminSetBand(storeId, isUuid(bandId) ? bandId : null, Number(form.get("months")) || 1);
+    } catch (e) {
+      if (e instanceof BandError) return { error: e.message };
+      throw e;
+    }
+    return { ok: "Store plan updated." };
+  }
+
   if (form.get("intent") === "currency") {
     const storeId = str(form.get("storeId"));
     const currency = form.get("currency");
@@ -211,6 +227,28 @@ export default function AdminMerchants({ loaderData, actionData }: Route.Compone
                       ))}
                     </NativeSelect>
                     <Button type="submit" size="sm" variant="outline">Save</Button>
+                  </Form>
+                  <Form method="post" className="flex flex-wrap items-center gap-2 text-sm">
+                    <input type="hidden" name="intent" value="band" />
+                    <input type="hidden" name="storeId" value={m.storeId} />
+                    <span>Plan</span>
+                    <NativeSelect name="bandId" defaultValue={m.listingBandId ?? ""} className="h-8 w-auto">
+                      <option value="">Default (free)</option>
+                      {loaderData.bands.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.name} · {b.maxItems ?? "unlimited"} items
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <NativeSelect name="months" defaultValue="1" className="h-8 w-auto" aria-label="For how long (paid plans)">
+                      {[1, 3, 6, 12].map((n) => (
+                        <option key={n} value={n}>
+                          {n} month{n > 1 ? "s" : ""}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                    <Button type="submit" size="sm" variant="outline">Save</Button>
+                    {m.bandPaidUntil ? <span className="text-xs text-muted-foreground">paid until {date(m.bandPaidUntil)}</span> : null}
                   </Form>
                   <LicenseList licenses={licenses.filter((l) => l.storeId === m.storeId)} today={loaderData.today} />
                   <div className="flex gap-3 text-sm">

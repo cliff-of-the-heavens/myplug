@@ -2,6 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
 import type { SessionUser } from "./auth.server";
 import { bannerCounts } from "./banners.server";
+import { pendingBandPayments } from "./bands.server";
 import { str } from "./utils";
 
 const { users, stores, promotions, reports } = schema;
@@ -25,9 +26,10 @@ export async function getAdminCounts() {
     db.select({ n: sql<number>`count(*)::int` }).from(schema.couriers).where(eq(schema.couriers.status, "pending")),
     db.select({ n: sql<number>`count(*)::int` }).from(schema.businessLicenses).where(eq(schema.businessLicenses.status, "pending")),
   ]);
-  const [[flagged], banners] = await Promise.all([
+  const [[flagged], banners, bandPayments] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int` }).from(schema.reviews).where(eq(schema.reviews.status, "flagged")),
     bannerCounts(),
+    pendingBandPayments(),
   ]);
   return {
     pendingMerchants: merchants.pending,
@@ -38,6 +40,7 @@ export async function getAdminCounts() {
     pendingLicenses: pendingLicenses.n,
     flaggedReviews: flagged.n,
     banners,
+    bandPayments,
   };
 }
 

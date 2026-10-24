@@ -10,11 +10,13 @@ import {
   ScrollRestoration,
   type ShouldRevalidateFunctionArgs,
 } from "react-router";
+import { Tracker } from "~/components/tracker";
 import type { Route } from "./+types/root";
 import "./app.css";
 import { Container } from "./components/page";
 import { MobileTabBar, SiteFooter, SiteHeader } from "./components/site-header";
 import { Button } from "./components/ui/button";
+import { analyticsOn } from "./lib/analytics.server";
 import { getUser } from "./lib/auth.server";
 import { getCategories } from "./lib/catalog.server";
 import { unreadCount } from "./lib/messaging.server";
@@ -42,14 +44,14 @@ export const meta: Route.MetaFunction = () => [
 ];
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const [user, categories] = await Promise.all([getUser(request), getCategories()]);
+  const [user, categories, analytics] = await Promise.all([getUser(request), getCategories(), analyticsOn()]);
   const [unread, notices] = user ? await Promise.all([unreadCount(user), unreadNotifications(user.id)]) : [0, 0];
   // Hearts and the cart badge, for customers
   const [saved, cart] =
     user?.role === "customer" ? await Promise.all([favouriteIds(user.id), cartCount(user.id)]) : [{ products: [], stores: [] }, 0];
   // Everyone must accept the current Terms of Use (new users at sign-up, existing users once).
   const needsTerms = !!user && user.termsVersion !== TERMS_VERSION;
-  return { user, categories, unread, notices, needsTerms, saved, cart };
+  return { user, categories, unread, notices, needsTerms, saved, cart, analytics };
 }
 
 // Don't refetch categories/user on every form submission unless it could have changed.
@@ -108,13 +110,14 @@ function useBlockStrayFileDrops() {
 export default function App({ loaderData }: Route.ComponentProps) {
   useServiceWorker();
   useBlockStrayFileDrops();
-  const { user, categories, unread, notices, needsTerms, cart } = loaderData;
+  const { user, categories, unread, notices, needsTerms, cart, analytics } = loaderData;
   return (
     <AuthDialogProvider signedIn={!!user}>
       <SiteHeader user={user} categories={categories} unread={unread} notices={notices} cart={cart} />
       {needsTerms ? <TermsGate /> : null}
       <main className="pb-20 md:pb-0">
         <Outlet />
+        <Tracker enabled={analytics} />
       </main>
       <SiteFooter />
       <MobileTabBar user={user} unread={unread} />

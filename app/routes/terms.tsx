@@ -139,6 +139,13 @@ function TermsText() {
             they need to check who's collecting.
           </li>
           <li>Inactive stores are archived and later deleted as described on the site; sales records are kept as the law requires.</li>
+          <li>
+            We count visits to understand how MyPlug is used: pages viewed, which stores and listings are visited, and how long
+            banner adverts are on screen and how often they're clicked. Visitors who aren't signed in get a random identifier
+            stored in their browser; for signed-in users, store visits are linked to their account and seen only by MyPlug
+            staff (never by sellers). Statistics are kept as daily totals and then monthly summaries, and detail is deleted
+            after the periods set by MyPlug. Switch on "Do Not Track" in your browser and you won't be counted.
+          </li>
         </ul>
       </section>
 

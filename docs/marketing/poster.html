@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyPlug Poster</title>
+<!--
+  MyPlug marketing poster, A3 portrait (297 × 420 mm). Prints to A4 too (it scales).
+  To print: open in Chrome or Edge → Print → Paper size A3 (or A4), Margins: None, tick "Background graphics".
+  Change your web address in ONE place: the SITE line in the script at the bottom.
+-->
+<style>
+  @page { size: A3 portrait; margin: 0; }
+  :root {
+    --orange: #ff8b22; --pink: #ff326f; --magenta: #d52db5; --violet: #8140f4;
+    --yellow: #ffd34d; --teal: #19b6a8; --ink: #1d1a2e; --muted: #5d5872; --paper: #fffaf3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #e9e5ee; }
+  body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .poster { width: 297mm; height: 420mm; margin: 0 auto; background: var(--paper); position: relative; overflow: hidden; display: grid; grid-template-rows: auto 1fr auto; }
+  @media screen { body { padding: 24px 0; } .poster { box-shadow: 0 20px 60px rgba(40, 20, 80, .25); } }
+
+  .hero { background: linear-gradient(125deg, var(--orange) 0%, var(--pink) 42%, var(--magenta) 72%, var(--violet) 100%); color: #fff; padding: 18mm 20mm 18mm; position: relative; }
+  .hero::after { content: ""; position: absolute; right: -40mm; top: -50mm; width: 150mm; height: 150mm; border-radius: 50%; background: rgba(255, 211, 77, .35); filter: blur(4mm); }
+  .brand { display: flex; align-items: center; gap: 6mm; position: relative; z-index: 1; }
+  .brand img { width: 30mm; height: 30mm; border-radius: 7mm; box-shadow: 0 4mm 10mm rgba(0, 0, 0, .25); background: #fff; }
+  .brand b { font-size: 24mm; font-weight: 900; letter-spacing: -1mm; }
+  .brand b span { color: var(--yellow); }
+  .hero h1 { margin-top: 10mm; font-size: 21mm; line-height: .95; font-weight: 900; letter-spacing: -1mm; position: relative; z-index: 1; }
+  .hero h1 em { font-style: normal; color: var(--yellow); display: block; }
+  .hero p { margin-top: 6mm; font-size: 7mm; max-width: 220mm; opacity: .95; position: relative; z-index: 1; }
+
+  .body { padding: 11mm 20mm 0; display: grid; grid-template-rows: auto auto 1fr; gap: 8mm; }
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6mm; }
+  .tile { border-radius: 6mm; padding: 6mm; color: var(--ink); min-height: 40mm; }
+  .tile .ic { width: 13mm; height: 13mm; border-radius: 4mm; display: grid; place-items: center; background: #fff; margin-bottom: 3mm; }
+  .tile .ic svg { width: 8mm; height: 8mm; }
+  .tile h3 { font-size: 6.4mm; font-weight: 800; }
+  .tile p { font-size: 4.3mm; margin-top: 1.5mm; color: var(--muted); line-height: 1.3; }
+  .c1 { background: #ffe9d6; } .c2 { background: #ffe1ea; } .c3 { background: #f2e3ff; }
+  .c4 { background: #ddf6f2; } .c5 { background: #fff3c9; } .c6 { background: #e3ecff; }
+
+  .strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm; }
+  .strip div { border: 0.6mm solid #eadfd4; border-radius: 5mm; padding: 4mm 4.5mm; background: #fff; }
+  .strip b { display: block; font-size: 5mm; }
+  .strip span { font-size: 3.8mm; color: var(--muted); }
+
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; align-content: start; }
+  .card { border-radius: 7mm; padding: 8mm; color: #fff; }
+  .card h2 { font-size: 9mm; font-weight: 900; line-height: 1; }
+  .card ul { list-style: none; margin-top: 4mm; display: grid; gap: 2mm; font-size: 4.6mm; }
+  .card li::before { content: "✓"; font-weight: 900; margin-right: 2.5mm; color: var(--yellow); }
+  .shop { background: linear-gradient(135deg, var(--teal), #0f8a99); }
+  .sell { background: linear-gradient(135deg, var(--violet), var(--magenta)); }
+
+  .foot { margin: 8mm 20mm 12mm; border-radius: 8mm; background: var(--ink); color: #fff; padding: 9mm 10mm; display: flex; align-items: center; justify-content: space-between; gap: 8mm; }
+  .foot .cta { font-size: 11mm; font-weight: 900; line-height: 1; }
+  .foot .cta span { color: var(--yellow); }
+  .foot .site { font-size: 8mm; font-weight: 800; background: linear-gradient(120deg, var(--orange), var(--pink)); padding: 4mm 8mm; border-radius: 99mm; white-space: nowrap; }
+  .foot small { display: block; margin-top: 2.5mm; font-size: 4.2mm; color: #c9c3da; font-weight: 400; }
+</style>
+</head>
+<body>
+<div class="poster">
+  <header class="hero">
+    <div class="brand"><img src="icon.svg" alt=""><b>My<span>Plug</span></b></div>
+    <h1>Find it. Order it.<em>Or ask someone to make it.</em></h1>
+    <p>Malawi's marketplace for shops, services, downloads, property and cars, with tracked delivery to your door.</p>
+  </header>
+
+  <main class="body">
+    <section class="tiles">
+      <div class="tile c1"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#ff8b22" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2 2h3l2.7 12.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg></div><h3>Shop local</h3><p>Fashion, electronics, groceries, beauty and more, with a cart and real deals.</p></div>
+      <div class="tile c2"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#ff326f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4"/></svg></div><h3>Book services</h3><p>DJs, decor, cakes, photographers: see free dates and book in a tap.</p></div>
+      <div class="tile c3"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#8140f4" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V21H3z"/><path d="M9 21v-7h6v7"/></svg></div><h3>Real Estate</h3><p>Land, houses for sale and rentals. Title deed shown, make an offer or bid.</p></div>
+      <div class="tile c4"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#19b6a8" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14l-1.5-5.5A2 2 0 0 0 15.6 10H8.4a2 2 0 0 0-1.9 1.5z"/><circle cx="7.5" cy="17.5" r="1.5"/><circle cx="16.5" cy="17.5" r="1.5"/><path d="M3 17h18"/></svg></div><h3>Cars &amp; spare parts</h3><p>Full spec sheets, and parts searched by number or by the car they fit.</p></div>
+      <div class="tile c5"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#d99a00" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div><h3>Chat &amp; requests</h3><p>Post a photo of what you need. Sellers who can make it message you.</p></div>
+      <div class="tile c6"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#3b6fe0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2M15 18H9M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62L18.3 8.38A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg></div><h3>Tracked delivery</h3><p>Verified couriers, pickup codes and live order tracking to your door.</p></div>
+    </section>
+
+    <section class="strip">
+      <div><b>Gift coupons</b><span>Buy one, share it, spend it online or in store</span></div>
+      <div><b>Deals &amp; promo codes</b><span>Timed sales and end-of-month offers</span></div>
+      <div><b>Verified sellers</b><span>Registered business badge and ratings</span></div>
+      <div><b>Works like an app</b><span>Install it on your phone</span></div>
+    </section>
+
+    <section class="split">
+      <div class="card shop"><h2>Shopping?</h2><ul><li>Browse free, no account needed</li><li>Pay after delivery or in advance</li><li>Rate every seller and courier</li><li>Alerts when stock arrives</li></ul></div>
+      <div class="card sell"><h2>Selling?</h2><ul><li>Your own shop page and link</li><li>Products, services, downloads, property, cars</li><li>Deals, coupons and banner ads</li><li>Start free with 25 listings</li></ul></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="cta">Plug in <span>today.</span><small>Free to browse · Free to start selling</small></div>
+    <div class="site" data-site>www.myplug.mw</div>
+  </footer>
+</div>
+<script>
+  // Your web address, shown on the poster. Change it here.
+  const SITE = "www.myplug.mw";
+  document.querySelectorAll("[data-site]").forEach((el) => (el.textContent = SITE));
+</script>
+</body>
+</html>

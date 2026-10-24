@@ -78,6 +78,7 @@ const cardColumns = {
   biddingEndsAt: products.biddingEndsAt,
   soldAt: products.soldAt,
   propertyFeatures: products.propertyFeatures,
+  autoDetails: products.autoDetails,
 };
 
 export type ProductCardData = Omit<
@@ -142,6 +143,52 @@ export async function getDeals(limit = 8) {
   );
 }
 
+/** Vehicle and spare-part filters on the Auto category. */
+export type AutoFilters = {
+  type?: "vehicle" | "part";
+  make?: string;
+  model?: string;
+  yearFrom?: number;
+  yearTo?: number;
+  maxMileage?: number;
+  transmission?: string;
+  fuel?: string;
+  bodyType?: string;
+  partCategory?: string;
+  /** Parts that fit this vehicle (make, model text, year). */
+  fitMake?: string;
+  fitModel?: string;
+  fitYear?: number;
+};
+
+/** An ILIKE pattern matching text that contains `s` (wildcards in `s` are escaped). */
+const contains = (s: string) => `%${s.replace(/[%_\\]/g, "\\$&")}%`;
+
+function autoFilterSql(f: AutoFilters): SQL[] {
+  const a = products.autoDetails;
+  const out: SQL[] = [];
+  const eqText = (key: string, v?: string) => v && out.push(sql`lower(${a} ->> ${key}) = lower(${v})`);
+  if (f.type) out.push(sql`${a} ->> 'type' = ${f.type}`);
+  eqText("make", f.make);
+  if (f.model) out.push(sql`${a} ->> 'model' ilike ${contains(f.model)}`);
+  if (f.yearFrom) out.push(sql`(${a} ->> 'year')::int >= ${f.yearFrom}`);
+  if (f.yearTo) out.push(sql`(${a} ->> 'year')::int <= ${f.yearTo}`);
+  if (f.maxMileage) out.push(sql`(${a} ->> 'mileageKm')::int <= ${f.maxMileage}`);
+  eqText("transmission", f.transmission);
+  eqText("fuel", f.fuel);
+  eqText("bodyType", f.bodyType);
+  eqText("partCategory", f.partCategory);
+  if (f.fitMake || f.fitModel || f.fitYear) {
+    // A part matches if any vehicle in its "fits" list matches (blank years mean "any").
+    out.push(sql`exists (select 1 from jsonb_array_elements(coalesce(${a} -> 'fits', '[]'::jsonb)) fit where
+      (${f.fitMake ?? null}::text is null or lower(fit ->> 'make') in (lower(${f.fitMake ?? ""}), 'any'))
+      and (${f.fitModel ?? null}::text is null or fit ->> 'model' ilike ${contains(f.fitModel ?? "")} or fit ->> 'model' = 'Any model')
+      and (${f.fitYear ?? null}::int is null or ((fit ->> 'yearFrom') is null or (fit ->> 'yearFrom')::int <= ${f.fitYear ?? 0})
+        and ((fit ->> 'yearTo') is null or (fit ->> 'yearTo')::int >= ${f.fitYear ?? 0})))`);
+  }
+  return out;
+}
+
 export type SortKey = "featured" | "price-asc" | "price-desc" | "newest";
 
 export async function searchProducts(opts: {
@@ -155,13 +202,24 @@ export async function searchProducts(opts: {
   /** Property features that must be present, e.g. ["backupPower", "waterTank"]. */
   features?: string[];
   titleDeed?: boolean;
+  auto?: AutoFilters;
   sort?: SortKey;
   limit?: number;
 }) {
   const filters: (SQL | undefined)[] = [];
   if (opts.q) {
     const term = `%${opts.q.replace(/[%_\\]/g, "\\$&")}%`;
-    filters.push(or(ilike(products.title, term), ilike(products.description, term), ilike(stores.name, term)));
+    filters.push(
+      or(
+        ilike(products.title, term),
+        ilike(products.description, term),
+        ilike(stores.name, term),
+        // Spare parts are often searched by part number, with or without dashes.
+        sql`${products.autoDetails} ->> 'partNumber' ilike ${term}`,
+        sql`${products.autoDetails} ->> 'oemNumber' ilike ${term}`,
+        sql`replace(${products.autoDetails} ->> 'partNumber', '-', '') ilike ${contains(opts.q.replace(/-/g, ""))}`,
+      ),
+    );
   }
   if (opts.categorySlug) {
     filters.push(
@@ -177,6 +235,7 @@ export async function searchProducts(opts: {
     if (FEATURE_FLAGS.some((x) => x.key === f)) filters.push(sql`coalesce((${products.propertyFeatures} ->> ${f})::boolean, false)`);
   }
   if (opts.titleDeed) filters.push(eq(products.titleDeed, true));
+  if (opts.auto) filters.push(...autoFilterSql(opts.auto));
 
   const order = {
     featured: weightedRandom,
