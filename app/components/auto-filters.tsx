@@ -1,7 +1,4 @@
-import { CarIcon, WrenchIcon } from "lucide-react";
-import { Link } from "react-router";
 import { BODY_TYPES, FUELS, MAKES, PART_CATEGORIES, TRANSMISSIONS } from "~/lib/auto";
-import { cn } from "~/lib/utils";
 import { Input, NativeSelect } from "./ui/input";
 
 export type AutoFilterValues = {
@@ -49,27 +46,14 @@ const MILEAGES = [30_000, 50_000, 80_000, 100_000, 150_000, 200_000];
 
 /**
  * Vehicle / spare-part filters, inside the browse page's filter form (which submits on change).
- * The type tabs are links so switching clears the other type's filters.
+ * Choosing vehicles or spare parts is the browse page's Auto submenu.
  */
-export function AutoFilterFields({ f, base }: { f: AutoFilterValues; base: string }) {
+export function AutoFilterFields({ f }: { f: AutoFilterValues }) {
   const year = new Date().getFullYear();
   const years = Array.from({ length: 40 }, (_, i) => year + 1 - i);
-  const tab = (value: "vehicle" | "part" | undefined, label: string, Icon?: typeof CarIcon) => (
-    <Link
-      to={`${base}${value ? `&autoType=${value}` : ""}`}
-      className={cn("flex items-center gap-1.5 rounded-full border-2 px-3 py-1 text-sm font-semibold", f.type === value ? "border-primary bg-primary text-primary-foreground" : "hover:border-primary/40")}
-    >
-      {Icon ? <Icon className="size-4" /> : null}
-      {label}
-    </Link>
-  );
+  if (!f.type) return null; // "Everything in Auto": no type-specific filters
   return (
     <div className="grid w-full gap-3 rounded-2xl border bg-card p-3">
-      <div className="flex flex-wrap gap-2">
-        {tab(undefined, "Everything in Auto")}
-        {tab("vehicle", "Vehicles", CarIcon)}
-        {tab("part", "Spare parts", WrenchIcon)}
-      </div>
       {f.type ? <input type="hidden" name="autoType" value={f.type} /> : null}
       {f.type === "vehicle" ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">

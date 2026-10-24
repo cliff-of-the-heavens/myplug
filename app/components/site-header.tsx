@@ -21,9 +21,11 @@ import {
   StoreIcon,
   UserIcon,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Form, Link, NavLink, useLocation, useSearchParams, useSubmit } from "react-router";
 import type { ProductKind } from "~/db/schema";
 import type { SessionUser } from "~/lib/auth.server";
+import { AUTO_CATEGORY_SLUG } from "~/lib/auto";
 import { iconUrl } from "~/lib/brand";
 import { AuthLink } from "./auth-dialog";
 import { cn } from "~/lib/utils";
@@ -237,8 +239,15 @@ export function SiteHeader({
   notices: number;
   cart: number;
 }) {
+  const { ref, collapsed } = useCollapsingHeader();
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/90 backdrop-blur supports-[backdrop-filter]:bg-background/75">
+    <header
+      ref={ref}
+      className={cn(
+        "sticky top-0 z-40 border-b bg-background/90 backdrop-blur transition-transform duration-200 supports-[backdrop-filter]:bg-background/75",
+        collapsed && "-translate-y-full",
+      )}
+    >
       <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:gap-6 md:px-6">
         <Logo />
         <SearchBar categories={categories} className="hidden md:flex" />
@@ -297,37 +306,112 @@ export function SiteHeader({
   );
 }
 
-export const TOP_MENU: { kind: ProductKind; label: string }[] = [
-  { kind: "product", label: "All products" },
-  { kind: "service", label: "Services" },
-  { kind: "digital", label: "Downloads" },
-  { kind: "property", label: "Real Estate" },
+/**
+ * On pages with a <StickySubmenu>, scrolling down slides the header away so the submenu becomes
+ * the top menu; scrolling up brings the header back. The header's visible height is published as
+ * --header-h so the submenu always sits right under whatever is showing.
+ */
+function useCollapsingHeader() {
+  const ref = useRef<HTMLElement>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => setCollapsed(false), [location.pathname, location.search]);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let lastY = window.scrollY;
+    const onScroll = () => {
+      const y = window.scrollY;
+      const hasSubmenu = !!document.querySelector("[data-sticky-submenu]");
+      if (!hasSubmenu || y < el.offsetHeight) setCollapsed(false);
+      else if (y > lastY + 4) setCollapsed(true);
+      else if (y < lastY - 4) setCollapsed(false);
+      if (Math.abs(y - lastY) > 4) lastY = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // data-header-collapsed lets the pinned submenu take on the main menu's colours (in-data-[header-collapsed]:).
+    document.documentElement.toggleAttribute("data-header-collapsed", collapsed);
+    const publish = () => document.documentElement.style.setProperty("--header-h", collapsed ? "0px" : `${el.offsetHeight}px`);
+    publish();
+    const ro = new ResizeObserver(publish);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [collapsed]);
+
+  return { ref, collapsed };
+}
+
+/**
+ * A page's own menu (e.g. the category chips) that takes over the top of the screen while
+ * scrolling down, in the main menu's gradient. Its chips should use SUBMENU_CHIP.
+ */
+export function StickySubmenu({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-sticky-submenu=""
+      className={cn(
+        "sticky top-[var(--header-h,0px)] z-30 border-b bg-background/95 backdrop-blur transition-[top] duration-200 supports-[backdrop-filter]:bg-background/80",
+        "in-data-[header-collapsed]:brand-gradient in-data-[header-collapsed]:border-transparent",
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/** Chip colours inside a StickySubmenu: outlined normally, white-on-gradient (like the main menu) once pinned. */
+export const SUBMENU_CHIP = {
+  active:
+    "border-primary bg-primary text-primary-foreground in-data-[header-collapsed]:border-white in-data-[header-collapsed]:bg-white in-data-[header-collapsed]:text-primary in-data-[header-collapsed]:shadow-sm",
+  idle: "hover:border-primary/40 in-data-[header-collapsed]:border-transparent in-data-[header-collapsed]:bg-white/15 in-data-[header-collapsed]:text-white in-data-[header-collapsed]:hover:bg-white/30",
+};
+
+export const TOP_MENU: { key: ProductKind | "auto"; label: string; to: string }[] = [
+  { key: "product", label: "All products", to: "/search?kind=product" },
+  { key: "auto", label: "Auto", to: `/search?category=${AUTO_CATEGORY_SLUG}` },
+  { key: "service", label: "Services", to: "/search?kind=service" },
+  { key: "digital", label: "Downloads", to: "/search?kind=digital" },
+  { key: "property", label: "Real Estate", to: "/search?kind=property" },
 ];
 
 /**
- * The main menu: the four kinds of listing. Their categories appear as a submenu on the browse
- * page, so they aren't repeated here. The active tab follows the page (a category belongs to its
- * kind); browsing with nothing chosen means "All products".
+ * The main menu: the four kinds of listing, plus Auto (a product category big enough for its own
+ * tab, with vehicles and spare parts as its submenu). Other categories appear as a submenu on the
+ * browse page, so they aren't repeated here. The active tab follows the page (a category belongs
+ * to its kind); browsing with nothing chosen means "All products".
  */
 function TopMenu({ categories }: { categories: Category[] }) {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const onBrowse = location.pathname === "/search";
-  const fromCategory = categories.find((c) => c.slug === params.get("category"))?.kind;
+  const category = params.get("category");
+  const fromCategory = categories.find((c) => c.slug === category)?.kind;
   const kind = params.get("kind") as ProductKind | null;
   // A typed search with no menu chosen looks everywhere, so no tab is highlighted.
-  const active: ProductKind | null = !onBrowse ? null : (fromCategory ?? kind ?? (params.get("q") ? null : "product"));
+  const active: (typeof TOP_MENU)[number]["key"] | null = !onBrowse
+    ? null
+    : category === AUTO_CATEGORY_SLUG
+      ? "auto"
+      : (fromCategory ?? kind ?? (params.get("q") ? null : "product"));
   return (
     <nav className="brand-gradient" aria-label="Main menu">
       <div className="scrollbar-none mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1.5 md:px-6">
         {TOP_MENU.map((m) => (
           <Link
-            key={m.kind}
-            to={`/search?kind=${m.kind}`}
-            aria-current={active === m.kind ? "page" : undefined}
+            key={m.key}
+            to={m.to}
+            aria-current={active === m.key ? "page" : undefined}
             className={cn(
               "shrink-0 rounded-full px-4 py-1 text-sm font-bold whitespace-nowrap text-white transition-colors",
-              active === m.kind ? "bg-white text-primary shadow-sm" : "bg-white/15 hover:bg-white/30",
+              active === m.key ? "bg-white text-primary shadow-sm" : "bg-white/15 hover:bg-white/30",
             )}
           >
             {m.label}

@@ -1,4 +1,4 @@
-import { SearchXIcon } from "lucide-react";
+import { CarIcon, SearchXIcon, WrenchIcon } from "lucide-react";
 import { Form, Link, useSubmit } from "react-router";
 import { Container, EmptyState, PageHeader } from "~/components/page";
 import { ProductGrid } from "~/components/product-card";
@@ -12,6 +12,7 @@ import type { ListingType } from "~/db/schema";
 import { FEATURE_FLAGS, LISTING_TYPES } from "~/lib/property";
 import { AutoFilterFields, autoFiltersFromParams } from "~/components/auto-filters";
 import { AUTO_CATEGORY_SLUG } from "~/lib/auto";
+import { StickySubmenu, SUBMENU_CHIP } from "~/components/site-header";
 import type { Route } from "./+types/search";
 
 const SORTS: { value: SortKey; label: string }[] = [
@@ -68,104 +69,130 @@ export default function Search({ loaderData }: Route.ComponentProps) {
   const { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto } = loaderData;
   const submit = useSubmit();
 
-  const chip = (slug: string | undefined, label: string) => {
+  const chip = (to: string, label: string, active: boolean, Icon?: typeof CarIcon) => (
+    <Link
+      key={label}
+      to={to}
+      className={cn(
+        "flex shrink-0 items-center gap-1.5 rounded-full border-2 px-3 py-1 text-sm font-medium transition-colors",
+        active ? SUBMENU_CHIP.active : SUBMENU_CHIP.idle,
+      )}
+    >
+      {Icon ? <Icon className="size-4" /> : null}
+      {label}
+    </Link>
+  );
+  const categoryChip = (slug: string | undefined, label: string) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (kind) params.set("kind", kind);
     if (slug) params.set("category", slug);
-    return (
-      <Link
-        key={label}
-        to={`/search?${params}`}
-        className={cn(
-          "shrink-0 rounded-full border-2 px-3 py-1 text-sm font-medium",
-          category === slug ? "border-primary bg-primary text-primary-foreground" : "hover:border-primary/40",
-        )}
-      >
-        {label}
-      </Link>
-    );
+    return chip(`/search?${params}`, label, category === slug);
+  };
+  // Auto has its own main menu tab; its submenu is vehicles / spare parts. Switching type clears the other type's filters.
+  const autoChip = (type: "vehicle" | "part" | undefined, label: string, Icon?: typeof CarIcon) => {
+    const params = new URLSearchParams({ category: AUTO_CATEGORY_SLUG });
+    if (q) params.set("q", q);
+    if (type) params.set("autoType", type);
+    return chip(`/search?${params}`, label, auto?.type === type, Icon);
   };
 
   return (
-    <Container className="py-6 md:py-8">
-      <PageHeader title={heading} description={`${products.length} item${products.length === 1 ? "" : "s"}`} />
+    <>
+      <Container className="pt-6 md:pt-8">
+        <PageHeader title={heading} description={`${products.length} item${products.length === 1 ? "" : "s"}`} />
+      </Container>
 
-      <div className="scrollbar-none -mx-4 mb-4 flex gap-2 overflow-x-auto px-4">
-        {chip(undefined, kind ? ALL_LABEL[kind] : "Everything")}
-        {categories.map((c) => chip(c.slug, c.name))}
-      </div>
-
-      <Form
-        className="mb-6 flex flex-wrap items-center gap-4"
-        onChange={(e) => submit(e.currentTarget, { preventScrollReset: true })}
-      >
-        {q ? <input type="hidden" name="q" value={q} /> : null}
-        {category ? <input type="hidden" name="category" value={category} /> : null}
-        {kind ? <input type="hidden" name="kind" value={kind} /> : null}
-        <label className="flex items-center gap-2 text-sm">
-          Sort by
-          <NativeSelect name="sort" defaultValue={sort} className="w-auto">
-            {SORTS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        {auto ? <AutoFilterFields f={auto} base={`/search?category=${AUTO_CATEGORY_SLUG}${q ? `&q=${encodeURIComponent(q)}` : ""}`} /> : null}
-        {kind === "property" ? (
-          <>
-            <label className="flex items-center gap-2 text-sm">
-              Type
-              <NativeSelect name="listing" defaultValue={listingType ?? ""} className="w-auto">
-                <option value="">Any</option>
-                {LISTING_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </NativeSelect>
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="deed" value="1" defaultChecked={titleDeed} className="size-4 accent-primary" />
-              Title deed available
-            </label>
-            {FEATURE_FLAGS.filter((f) => ["backupPower", "waterTank", "masterEnsuite", "separateDining", "borehole"].includes(f.key)).map((f) => (
-              <label key={f.key} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="feature" value={f.key} defaultChecked={features.includes(f.key)} className="size-4 accent-primary" />
-                {f.label.split(" (")[0]}
-              </label>
-            ))}
-          </>
-        ) : null}
-        {kind !== "service" && kind !== "digital" && kind !== "property" ? (
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" name="instock" value="1" defaultChecked={inStock} className="size-4 accent-primary" />
-            In stock only
-          </label>
-        ) : null}
-      </Form>
-
-      <BannerSlot ads={banners.category_top} shape="leaderboard" className="mb-6" />
-      {/* Results and the side ad are separate columns; the results column keeps its own height
-          (items-start), so a tall ad never stretches the product cards. */}
-      <div className={cn("grid items-start gap-6", banners.sidebar?.length && "lg:grid-cols-[minmax(0,1fr)_300px]")}>
-        <div className="min-w-0">
-          {products.length ? (
-            <ProductGrid products={products} />
+      {/* Outside the page column so that, pinned to the top, it spans the screen like the main menu. */}
+      <StickySubmenu className="mb-4">
+        <Container className="scrollbar-none flex gap-2 overflow-x-auto py-2">
+          {auto ? (
+            <>
+              {autoChip(undefined, "Everything in Auto")}
+              {autoChip("vehicle", "Vehicles", CarIcon)}
+              {autoChip("part", "Spare parts", WrenchIcon)}
+            </>
           ) : (
-            <EmptyState icon={SearchXIcon} title="Nothing found">
-              Try another search, or{" "}
-              <Link to="/requests/new" className="font-semibold text-primary">
-                post a request
-              </Link>{" "}
-              and let merchants find it for you.
-            </EmptyState>
+            <>
+              {categoryChip(undefined, kind ? ALL_LABEL[kind] : "Everything")}
+              {categories.filter((c) => c.slug !== AUTO_CATEGORY_SLUG).map((c) => categoryChip(c.slug, c.name))}
+            </>
           )}
+        </Container>
+      </StickySubmenu>
+
+      <Container className="pb-6 md:pb-8">
+        <Form
+          className="mb-6 flex flex-wrap items-center gap-4"
+          onChange={(e) => submit(e.currentTarget, { preventScrollReset: true })}
+        >
+          {q ? <input type="hidden" name="q" value={q} /> : null}
+          {category ? <input type="hidden" name="category" value={category} /> : null}
+          {kind ? <input type="hidden" name="kind" value={kind} /> : null}
+          <label className="flex items-center gap-2 text-sm">
+            Sort by
+            <NativeSelect name="sort" defaultValue={sort} className="w-auto">
+              {SORTS.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </label>
+          {auto ? <AutoFilterFields f={auto} /> : null}
+          {kind === "property" ? (
+            <>
+              <label className="flex items-center gap-2 text-sm">
+                Type
+                <NativeSelect name="listing" defaultValue={listingType ?? ""} className="w-auto">
+                  <option value="">Any</option>
+                  {LISTING_TYPES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="deed" value="1" defaultChecked={titleDeed} className="size-4 accent-primary" />
+                Title deed available
+              </label>
+              {FEATURE_FLAGS.filter((f) => ["backupPower", "waterTank", "masterEnsuite", "separateDining", "borehole"].includes(f.key)).map((f) => (
+                <label key={f.key} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="feature" value={f.key} defaultChecked={features.includes(f.key)} className="size-4 accent-primary" />
+                  {f.label.split(" (")[0]}
+                </label>
+              ))}
+            </>
+          ) : null}
+          {kind !== "service" && kind !== "digital" && kind !== "property" ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="instock" value="1" defaultChecked={inStock} className="size-4 accent-primary" />
+              In stock only
+            </label>
+          ) : null}
+        </Form>
+
+        <BannerSlot ads={banners.category_top} shape="leaderboard" className="mb-6" />
+        {/* Results and the side ad are separate columns; the results column keeps its own height
+            (items-start), so a tall ad never stretches the product cards. */}
+        <div className={cn("grid items-start gap-6", banners.sidebar?.length && "lg:grid-cols-[minmax(0,1fr)_300px]")}>
+          <div className="min-w-0">
+            {products.length ? (
+              <ProductGrid products={products} />
+            ) : (
+              <EmptyState icon={SearchXIcon} title="Nothing found">
+                Try another search, or{" "}
+                <Link to="/requests/new" className="font-semibold text-primary">
+                  post a request
+                </Link>{" "}
+                and let merchants find it for you.
+              </EmptyState>
+            )}
+          </div>
+          <BannerSlot ads={banners.sidebar} shape="sidebar" className="sticky top-36 hidden lg:block" />
         </div>
-        <BannerSlot ads={banners.sidebar} shape="sidebar" className="sticky top-36 hidden lg:block" />
-      </div>
-    </Container>
+      </Container>
+    </>
   );
 }
