@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MyPlug Upload Guide</title>
+<!--
+  Image and file requirements for banner ads and listings, plus free tools to get uploads right.
+  The numbers are the app's defaults: admins can change ad sizes (Admin → Banners → Spots), photos per
+  listing (Admin → Bands) and image optimisation (Admin → System). Update this page if they do.
+  To make the PDF: Chrome or Edge → Print → A4, Portrait, Margins: None, tick "Background graphics".
+-->
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  :root {
+    --orange: #ff8b22; --pink: #ff326f; --magenta: #d52db5; --violet: #8140f4;
+    --yellow: #ffd34d; --teal: #19b6a8; --ink: #1d1a2e; --muted: #5d5872; --paper: #fffaf3; --line: #eadfd4; --soft: #fff1e4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #e9e5ee; }
+  body { font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: var(--ink); -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 3.3mm; line-height: 1.38; }
+  .page { width: 210mm; height: 297mm; padding: 12mm 14mm 10mm; background: var(--paper); overflow: hidden; display: flex; flex-direction: column; gap: 4mm; position: relative; page-break-after: always; break-after: page; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  @media screen { body { padding: 24px 0; } .page { margin: 0 auto 24px; box-shadow: 0 20px 60px rgba(40, 20, 80, .25); } }
+
+  h1 { font-size: 7.6mm; font-weight: 900; line-height: 1.02; letter-spacing: -.3mm; }
+  h2 { font-size: 6mm; font-weight: 900; letter-spacing: -.15mm; display: flex; align-items: center; gap: 2.5mm; }
+  h2 .num { display: inline-flex; width: 7mm; height: 7mm; border-radius: 50%; align-items: center; justify-content: center; font-size: 3.6mm; color: #fff; background: linear-gradient(140deg, var(--orange), var(--pink)); }
+  h3 { font-size: 4mm; font-weight: 800; }
+  p.lead { font-size: 3.6mm; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .small { font-size: 3mm; }
+  .kicker { font-size: 3mm; font-weight: 800; letter-spacing: .5mm; text-transform: uppercase; color: var(--pink); }
+
+  .grad { background: linear-gradient(140deg, var(--orange) 0%, var(--pink) 42%, var(--magenta) 72%, var(--violet) 100%); color: #fff; }
+  .cover { border-radius: 5mm; padding: 7mm 8mm 6.5mm; display: grid; gap: 2.2mm; }
+  .cover .kicker { color: var(--yellow); }
+  .cover p { color: rgba(255,255,255,.92); font-size: 3.6mm; max-width: 150mm; }
+  .brand { display: flex; align-items: center; gap: 3mm; }
+  .brand img { width: 10mm; height: 10mm; border-radius: 3mm; background: #fff; box-shadow: 0 1.5mm 4mm rgba(0,0,0,.2); }
+  .brand b { font-size: 7mm; font-weight: 900; letter-spacing: -.3mm; }
+
+  table { width: 100%; border-collapse: separate; border-spacing: 0; background: #fff; border: .3mm solid var(--line); border-radius: 3mm; overflow: hidden; }
+  th, td { text-align: left; padding: 1.6mm 2.6mm; vertical-align: top; border-bottom: .3mm solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  th { background: var(--soft); font-size: 3mm; text-transform: uppercase; letter-spacing: .3mm; color: var(--muted); font-weight: 800; }
+  td b { font-weight: 800; }
+  .pill { display: inline-block; padding: .4mm 2mm; border-radius: 99mm; background: var(--soft); font-weight: 700; font-size: 3mm; white-space: nowrap; }
+
+  .card { background: #fff; border: .3mm solid var(--line); border-radius: 3mm; padding: 3.2mm 3.6mm; display: grid; gap: 1.6mm; align-content: start; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 3.5mm; }
+  ul.check { list-style: none; display: grid; gap: 1.1mm; }
+  ul.check li { padding-left: 5mm; position: relative; }
+  ul.check li::before { content: "✓"; position: absolute; left: 0; font-weight: 900; color: var(--teal); }
+  ul.cross { list-style: none; display: grid; gap: 1.1mm; }
+  ul.cross li { padding-left: 5mm; position: relative; }
+  ul.cross li::before { content: "✕"; position: absolute; left: 0; font-weight: 900; color: var(--pink); }
+
+  /* Banner shapes, drawn to scale (1 mm = 20 px of banner) */
+  .shapes { display: grid; grid-template-columns: 1fr auto; gap: 4mm; align-items: end; justify-content: start; background: #fff; border: .3mm solid var(--line); border-radius: 3mm; padding: 3.5mm; }
+  .shapes .wide { display: grid; gap: 2.5mm; }
+  .shape { position: relative; border-radius: 1.5mm; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 3mm; text-align: center; line-height: 1.2; }
+  .shape span { font-weight: 600; opacity: .9; display: block; font-size: 2.4mm; }
+  .top { display: grid; grid-template-columns: auto 1fr; gap: 3.5mm; align-items: stretch; }
+  .top figure { display: grid; gap: 1.5mm; }
+  .top figcaption { font-size: 2.8mm; color: var(--muted); max-width: 105mm; }
+  .shape .ad { position: absolute; top: 1mm; right: 1mm; font-size: 2mm; background: rgba(0,0,0,.45); padding: .2mm 1mm; border-radius: .6mm; letter-spacing: .2mm; }
+  .s-hero { width: 80mm; height: 32mm; background: linear-gradient(140deg, var(--orange), var(--pink)); }
+  .s-strip { width: 80mm; height: 15mm; background: linear-gradient(140deg, var(--pink), var(--magenta)); }
+  .s-lead { width: 60mm; height: 10mm; background: linear-gradient(140deg, var(--magenta), var(--violet)); }
+  .s-side { width: 15mm; height: 30mm; background: linear-gradient(180deg, var(--violet), var(--pink)); }
+  .safe { position: absolute; inset: 8% 10%; border: .3mm dashed rgba(255,255,255,.85); border-radius: 1mm; }
+
+  .tool { display: grid; grid-template-columns: 28mm 1fr; gap: 3mm; padding: 1.7mm 0; border-bottom: .3mm dashed var(--line); }
+  .tool:last-child { border-bottom: 0; }
+  .tool b { font-weight: 800; }
+  .tool .where { font-size: 2.8mm; color: var(--muted); }
+  .note { border-left: 1.2mm solid var(--yellow); background: #fff8dc; padding: 3mm 4mm; border-radius: 0 2.5mm 2.5mm 0; }
+  .foot { margin-top: auto; display: flex; justify-content: space-between; font-size: 2.8mm; color: var(--muted); border-top: .3mm solid var(--line); padding-top: 2.5mm; }
+</style>
+</head>
+<body>
+
+<!-- ============================== PAGE 1: banner ads ============================== -->
+<section class="page">
+  <div class="cover grad">
+    <div class="brand"><img src="icon.svg" alt=""><b>MyPlug</b></div>
+    <div class="kicker">Upload guide for advertisers and merchants</div>
+    <h1>Get your images and files right the first time</h1>
+    <p>The sizes, formats and file limits MyPlug checks when you upload a banner ad, a listing photo or a digital product, plus free tools to fix a file that doesn't fit.</p>
+  </div>
+
+  <h2><span class="num">1</span>Banner ads</h2>
+  <p class="lead">Every banner is checked on upload. One that doesn't fit is refused, with a message saying what to change.</p>
+
+  <table>
+    <tr><th>Ad spot</th><th>Upload size</th><th>Shape</th><th>Min width</th><th>Max file</th><th>Where it shows</th></tr>
+    <tr><td><b>Home hero</b></td><td><span class="pill">1600 × 640 px</span></td><td>5 : 2</td><td>1200 px</td><td>600 KB</td><td>Rotating slide, top of the home page</td></tr>
+    <tr><td><b>Home banner</b></td><td><span class="pill">1600 × 300 px</span></td><td>16 : 3</td><td>1200 px</td><td>400 KB</td><td>Strip between home page sections</td></tr>
+    <tr><td><b>Search &amp; category</b></td><td><span class="pill">1200 × 200 px</span></td><td>6 : 1</td><td>900 px</td><td>300 KB</td><td>Above search and category results</td></tr>
+    <tr><td><b>Side banner</b></td><td><span class="pill">300 × 600 px</span></td><td>1 : 2</td><td>225 px</td><td>300 KB</td><td>Beside results and products; not on phones</td></tr>
+  </table>
+
+  <div class="top">
+    <figure>
+      <div class="shapes">
+      <div class="wide">
+        <div class="shape s-hero"><div class="safe"></div><div class="ad">AD</div><div>Home page hero<span>1600 × 640</span></div></div>
+        <div class="shape s-strip"><div class="safe"></div><div class="ad">AD</div><div>Home page banner<span>1600 × 300</span></div></div>
+        <div class="shape s-lead"><div class="ad">AD</div><div>Search &amp; category<span>1200 × 200</span></div></div>
+      </div>
+      <div class="shape s-side"><div class="ad">AD</div><div>Side<span>300 × 600</span></div></div>
+    </div>
+      <figcaption>Drawn to scale. Dashed box: the safe area for words, logos and prices.</figcaption>
+    </figure>
+    <div class="card">
+      <h3>The rules the upload checks</h3>
+      <ul class="check">
+        <li><b>Format:</b> JPG, PNG or WebP. GIF, PDF and Word files are refused.</li>
+        <li><b>Shape:</b> must match the spot to within about 8%. A larger image of the same shape, like 3200 × 1280 for the hero, is fine.</li>
+        <li><b>Width:</b> at least three-quarters of the listed width, so the banner doesn't look blurry.</li>
+        <li><b>File size:</b> at or under the KB limit. Compress the image if it's over.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Design tips</h3>
+    <div class="grid2">
+      <ul class="check">
+        <li>Banners are cropped to fill the space on some screens, so keep text away from the edges.</li>
+        <li>An <b>AD</b> label sits in the top-right corner. Leave that corner clear.</li>
+      </ul>
+      <ul class="check">
+        <li>Use a few large words, not a paragraph. The slim banners are read in about a second.</li>
+        <li>Save photos as JPG or WebP, and flat graphics with text as PNG.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="note small"><b>Sizes can change.</b> MyPlug's admins can adjust ad spots. The Advertise page and your upload link always show the current size, so check them before you design.</div>
+
+  <div class="foot"><span>MyPlug upload guide</span><span>Page 1 of 4</span></div>
+</section>
+
+<!-- ============================== PAGE 2: listings ============================== -->
+<section class="page">
+  <h2><span class="num">2</span>Listing photos</h2>
+  <p class="lead">These rules apply to products, services, Auto (vehicles and spare parts), Real Estate and your store logo.</p>
+
+  <table>
+    <tr><th>What</th><th>Accepted</th><th>Limit</th><th>Recommended</th></tr>
+    <tr><td><b>Listing photos</b></td><td>JPG, PNG, WebP, GIF</td><td>4 MB per photo<br>Up to <b>8 photos</b> per listing (set by MyPlug)</td><td><span class="pill">Square, 1200 × 1200 px</span><br>The first photo is the cover on shop cards.</td></tr>
+    <tr><td><b>Real Estate</b></td><td>JPG, PNG, WebP</td><td>Same as above, in two groups: <b>exterior</b> and <b>interior</b> (land has one group)</td><td>Landscape 1600 × 1200 px for rooms. Use a square cover photo.</td></tr>
+    <tr><td><b>Auto</b></td><td>JPG, PNG, WebP</td><td>Same as listing photos</td><td>Front three-quarter view first, then the sides, interior, dashboard (mileage) and engine. For parts, show the part number.</td></tr>
+    <tr><td><b>Store logo</b></td><td>JPG, PNG, WebP</td><td>4 MB</td><td><span class="pill">Square, 512 × 512 px</span> Keep a plain background.</td></tr>
+    <tr><td><b>Request photos</b> and <b>chat photos</b></td><td>JPG, PNG, WebP, GIF</td><td>4 MB</td><td>A clear, well-lit photo of what you mean</td></tr>
+  </table>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>How your photos are shown</h3>
+      <ul class="check">
+        <li>Shop cards and the product gallery show photos <b>square</b>, cropped to fill. Put the item in the middle.</li>
+        <li>MyPlug may resize big photos (to about 1600 px wide) and convert them to WebP to keep pages fast. You don't need to do this yourself.</li>
+        <li>A photo over 4 MB is refused before any resizing happens. Shrink very large phone photos first.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Photos that sell</h3>
+      <ul class="check">
+        <li>Daylight or bright, even light, with no flash glare.</li>
+        <li>A plain, tidy background, with the item filling most of the frame.</li>
+        <li>Your own photos of the actual item, especially for used goods.</li>
+      </ul>
+      <ul class="cross">
+        <li>No phone numbers or prices written on photos. Use the listing fields instead.</li>
+        <li>No other sellers' photos or watermarks.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2><span class="num">3</span>Digital downloads</h2>
+  <table>
+    <tr><th>Kind</th><th>Full file (what buyers get)</th><th>Preview (free sample)</th><th>Tips</th></tr>
+    <tr><td><b>Video</b></td><td>MP4 or WebM, up to 2 GB</td><td>Same type: a short trailer</td><td>MP4 (H.264) at 1080p plays everywhere. 30–60 seconds is enough for a trailer.</td></tr>
+    <tr><td><b>Audio</b></td><td>MP3, M4A, OGG or WAV, up to 2 GB</td><td>Same type: a clip</td><td>MP3 at 192–320 kbps is much smaller than WAV, and buyers rarely hear the difference.</td></tr>
+    <tr><td><b>Document</b></td><td>PDF only, up to 2 GB</td><td>Same type: the first pages</td><td>Turn Word or EPUB files into PDF first. Compress scanned books.</td></tr>
+  </table>
+  <p class="small muted">The full file is kept private and only buyers can open it. The preview is public, so don't put the whole work in it.</p>
+
+  <div class="foot"><span>MyPlug upload guide</span><span>Page 2 of 4</span></div>
+</section>
+
+<!-- ============================== PAGE 3: tools ============================== -->
+<section class="page">
+  <h2><span class="num">4</span>Free tools to make your files fit</h2>
+  <p class="lead">You don't need expensive software. These free tools, most of which run in a web browser or on your phone, cover everything in this guide.</p>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Design a banner</h3>
+      <div class="tool"><div><b>Canva</b><div class="where">canva.com · web, phone</div></div><div>Choose <i>Custom size</i> and type the exact pixels, such as 1200 × 200. It has ready templates and exports JPG or PNG.</div></div>
+      <div class="tool"><div><b>Adobe Express</b><div class="where">adobe.com/express · web, phone</div></div><div>Banner templates, quick text effects and background removal.</div></div>
+      <div class="tool"><div><b>Photopea</b><div class="where">photopea.com · web</div></div><div>A free Photoshop-style editor in the browser. Use <i>File → New</i> at the exact size.</div></div>
+      <div class="tool"><div><b>GIMP</b><div class="where">gimp.org · Windows, Mac</div></div><div>Full desktop editor for detailed artwork.</div></div>
+    </div>
+    <div class="card">
+      <h3>Resize, crop and shrink</h3>
+      <div class="tool"><div><b>Squoosh</b><div class="where">squoosh.app · web</div></div><div>Resize to exact pixels, convert to WebP or JPG and see the new KB size before you download. It's the best way to get under a banner's KB limit.</div></div>
+      <div class="tool"><div><b>TinyPNG</b><div class="where">tinypng.com · web</div></div><div>Drag in up to 20 images and get much smaller PNG, JPG or WebP files that look the same.</div></div>
+      <div class="tool"><div><b>iLoveIMG</b><div class="where">iloveimg.com · web</div></div><div>Crop to a square or exact size, and resize many photos at once.</div></div>
+      <div class="tool"><div><b>Your phone</b><div class="where">Photos / Gallery app</div></div><div>Edit → Crop → <i>Square</i> for listing photos. Snapseed (free) adds brightness and straightening.</div></div>
+    </div>
+    <div class="card">
+      <h3>Video, audio and PDF</h3>
+      <div class="tool"><div><b>HandBrake</b><div class="where">handbrake.fr · Windows, Mac</div></div><div>Converts any video to MP4 using the <i>Fast 1080p30</i> preset. Trim a trailer with the start and end times.</div></div>
+      <div class="tool"><div><b>CapCut</b><div class="where">capcut.com · web, phone</div></div><div>Cut a short trailer or preview clip and export MP4.</div></div>
+      <div class="tool"><div><b>Audacity</b><div class="where">audacityteam.org · Windows, Mac</div></div><div>Trim a preview clip and export MP3.</div></div>
+      <div class="tool"><div><b>iLovePDF</b><div class="where">ilovepdf.com · web</div></div><div>Word to PDF, compress PDF, and split out the first pages for a preview.</div></div>
+    </div>
+    <div class="card">
+      <h3>Check a file before you upload</h3>
+      <div class="tool"><div><b>Windows</b></div><div>Right-click the file → <i>Properties</i> → <i>Details</i> shows the width, height and size.</div></div>
+      <div class="tool"><div><b>Mac</b></div><div>Open in Preview → <i>Tools</i> → <i>Show Inspector</i>, or select the file and press <i>Cmd + I</i>.</div></div>
+      <div class="tool"><div><b>Phone</b></div><div>Open the photo and swipe up, or tap ⓘ, to see its resolution and file size.</div></div>
+      <div class="tool"><div><b>Size check</b></div><div>1 MB = 1024 KB. A 400 KB banner limit means the file must show 400 KB or less.</div></div>
+    </div>
+  </div>
+
+  <div class="foot"><span>MyPlug upload guide</span><span>Page 3 of 4</span></div>
+</section>
+
+<!-- ============================== PAGE 4: documents and checklists ============================== -->
+<section class="page">
+  <h2><span class="num">5</span>Documents for verification</h2>
+  <table>
+    <tr><th>What</th><th>Accepted</th><th>Limit</th></tr>
+    <tr><td>Business licences and certificates, courier ID documents, proof of payment</td><td>PDF or a photo (JPG, PNG, WebP)</td><td>4 MB</td></tr>
+    <tr><td>Courier face photo, parcel collector photo</td><td>Photo (JPG, PNG, WebP)</td><td>4 MB</td></tr>
+  </table>
+  <p class="small muted">These are stored privately and seen only by MyPlug staff. Make sure every corner of the document is in the photo and the text is readable.</p>
+
+  <h2><span class="num">6</span>Before you upload</h2>
+  <div class="card">
+    <h3>Quick checklist before you upload a banner</h3>
+    <div class="grid3">
+      <ul class="check"><li>Exact size for the spot, or the same shape and larger</li><li>JPG, PNG or WebP</li></ul>
+      <ul class="check"><li>Under the KB limit (use Squoosh or TinyPNG)</li><li>Text inside the safe area</li></ul>
+      <ul class="check"><li>Top-right corner clear for the AD label</li><li>Link and headline double-checked</li></ul>
+    </div>
+  </div>
+
+
+  <div class="card">
+    <h3>Quick checklist before you post a listing</h3>
+    <div class="grid3">
+      <ul class="check"><li>JPG, PNG or WebP, 4 MB or less each</li><li>Square photos, item in the middle</li></ul>
+      <ul class="check"><li>Best photo first (it's the cover)</li><li>Real photos of the actual item</li></ul>
+      <ul class="check"><li>No phone numbers or prices on the photos</li><li>Digital: a preview of the same file type</li></ul>
+    </div>
+  </div>
+
+  <div class="note small">These tools are made by other companies and aren't part of MyPlug. They're suggestions only. Check each one's terms before uploading private documents to it.</div>
+
+  <div class="foot"><span>MyPlug upload guide</span><span>Page 4 of 4</span></div>
+</section>
+
+</body>
+</html>
