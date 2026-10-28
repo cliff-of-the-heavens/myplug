@@ -1,6 +1,7 @@
 import { CarFrontIcon, CarTaxiFrontIcon, PackageIcon, SearchXIcon, TruckIcon, UsersIcon } from "lucide-react";
 import { Form, Link } from "react-router";
 import { Container, EmptyState, PageHeader } from "~/components/page";
+import { RatingBadge } from "~/components/rating";
 import { SafeImage } from "~/components/safe-image";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -108,7 +109,10 @@ export default function Transport({ loaderData }: Route.ComponentProps) {
                     {c.driverDailyCents != null ? <Badge variant="accent">Driver available</Badge> : null}
                     {!c.selfDrive ? <Badge variant="muted">With driver only</Badge> : null}
                   </p>
-                  <p className="text-xs text-muted-foreground">by {c.courier.name}</p>
+                  <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    by {c.courier.name}
+                    <RatingBadge average={c.ownerRating?.average} total={c.ownerRating?.total ?? 0} />
+                  </p>
                 </div>
               </Link>
             ))}

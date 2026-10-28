@@ -1,6 +1,7 @@
 import { CarFrontIcon, PhoneIcon, TruckIcon } from "lucide-react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { Container, EmptyState, FormError, PageHeader } from "~/components/page";
+import { RateCourier } from "~/components/rate-courier";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -8,6 +9,7 @@ import { requireCustomer } from "~/lib/auth.server";
 import { formatDay } from "~/lib/dates";
 import { date, money, timeAgo } from "~/lib/format";
 import { BOOKING_STATUS, JOB_STATUS, TRANSPORT_LABEL } from "~/lib/transport";
+import { ReviewError, reviewableTransport, submitTransportReview } from "~/lib/reviews.server";
 import { cancelBooking, customerBookings, customerJobs, TransportError } from "~/lib/transport.server";
 import { str } from "~/lib/utils";
 import type { Route } from "./+types/account.transport";
@@ -17,17 +19,24 @@ export const meta: Route.MetaFunction = () => [{ title: "My transport · MyPlug"
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireCustomer(request);
   const [jobs, bookings] = await Promise.all([customerJobs(user.id), customerBookings(user.id)]);
-  return { jobs, bookings };
+  // Finished car hire can be rated (returned, or past its last day)
+  const rateable = await Promise.all(bookings.map((b) => (b.status === "completed" || b.status === "confirmed" ? reviewableTransport(user.id, { bookingId: b.id }) : null)));
+  return { jobs, bookings: bookings.map((b, i) => ({ ...b, rate: rateable[i] })) };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const user = await requireCustomer(request);
   const form = await request.formData();
+  const bookingId = str(form.get("bookingId"));
   try {
-    await cancelBooking(user.id, str(form.get("bookingId")));
-    return { ok: true };
+    if (form.get("intent") === "rate") {
+      await submitTransportReview({ customerId: user.id, ref: { bookingId }, rating: Number(form.get("rating")), comment: String(form.get("comment") ?? "") });
+      return { ok: "Thanks for your rating!", rated: bookingId };
+    }
+    await cancelBooking(user.id, bookingId);
+    return { ok: "Booking cancelled." };
   } catch (e) {
-    if (e instanceof TransportError) return { error: e.message };
+    if (e instanceof TransportError || e instanceof ReviewError) return { error: e.message, rated: form.get("intent") === "rate" ? bookingId : undefined };
     throw e;
   }
 }
@@ -50,7 +59,7 @@ export default function MyTransport({ loaderData, actionData }: Route.ComponentP
       {params.get("booked") ? (
         <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">Booking requested. The owner will confirm it; you'll get a notification.</p>
       ) : null}
-      <FormError error={actionData && "error" in actionData ? actionData.error : null} />
+      {actionData && "error" in actionData && !actionData.rated ? <FormError error={actionData.error} /> : null}
 
       <section className="grid gap-3">
         <h2 className="text-lg font-extrabold">Car hire</h2>
@@ -75,7 +84,17 @@ export default function MyTransport({ loaderData, actionData }: Route.ComponentP
                 </div>
                 <span className="font-bold">{money(b.totalCents)}</span>
                 <Badge variant={BOOKING_STATUS[b.status].tone}>{BOOKING_STATUS[b.status].label}</Badge>
-                {b.status === "requested" || b.status === "confirmed" ? (
+                {b.rate ? (
+                  <div className="w-full">
+                    <RateCourier
+                      courierName={b.rate.courier.name}
+                      review={b.rate.review}
+                      fields={{ bookingId: b.id }}
+                      result={actionData && "rated" in actionData && actionData.rated === b.id ? actionData : null}
+                    />
+                  </div>
+                ) : null}
+                {(b.status === "requested" || b.status === "confirmed") && !b.rate ? (
                   <Form method="post">
                     <input type="hidden" name="bookingId" value={b.id} />
                     <Button type="submit" variant="ghost" size="sm" disabled={busy}>

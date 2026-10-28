@@ -4,6 +4,7 @@ import type { TransportType } from "~/db/schema";
 import { isDateStr, today } from "./dates";
 import { notify } from "./notify.server";
 import { referenceNumber } from "./orders.server";
+import { courierRatings } from "./reviews.server";
 import { daysBetween, TRANSPORT_LABEL } from "./transport";
 
 const { transportJobs, transportOffers, hireCars, carBookings, couriers } = schema;
@@ -264,13 +265,15 @@ export async function listCars(opts: { q?: string; seats?: number; driver?: bool
     limit: 120,
   });
   const q = opts.q?.toLowerCase();
-  return rows.filter(
+  const cars = rows.filter(
     (c) =>
       c.courier.status === "approved" &&
       (!q || `${c.title} ${c.location}`.toLowerCase().includes(q)) &&
       (!opts.seats || c.seats >= opts.seats) &&
       (!opts.driver || c.driverDailyCents != null),
   );
+  const ratings = await courierRatings([...new Set(cars.map((c) => c.courierId))]);
+  return cars.map((c) => ({ ...c, ownerRating: ratings.get(c.courierId) ?? null }));
 }
 
 /** A hire car's page: its details and the days already taken. */
@@ -280,12 +283,13 @@ export async function carDetail(carId: string) {
     with: { courier: { columns: { id: true, name: true, status: true, bio: true } } },
   });
   if (!car || !car.isActive || car.courier.status !== "approved") return null;
+  const ownerRating = (await courierRatings([car.courierId])).get(car.courierId) ?? null;
   const taken = await db
     .select({ startDate: carBookings.startDate, endDate: carBookings.endDate })
     .from(carBookings)
     .where(and(eq(carBookings.carId, carId), eq(carBookings.status, "confirmed"), gte(carBookings.endDate, today())))
     .orderBy(asc(carBookings.startDate));
-  return { car, taken };
+  return { car, taken, ownerRating };
 }
 
 /** Confirmed bookings of a car that overlap the given days. */

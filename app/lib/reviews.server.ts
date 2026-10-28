@@ -1,11 +1,12 @@
 import { and, avg, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
 import type { ReviewTarget } from "~/db/schema";
+import { today } from "./dates";
 import { notify, notifyAdmins } from "./notify.server";
 import { maskObscene, parseWordList, type WordLists } from "./profanity";
 import { getSettings, setSettings } from "./settings.server";
 
-const { reviews, orders, stores, couriers, users } = schema;
+const { reviews, orders, stores, couriers, users, transportJobs, carBookings } = schema;
 
 export class ReviewError extends Error {}
 
@@ -106,6 +107,88 @@ export async function submitReview(input: { customerId: string; orderId: string;
   return row;
 }
 
+// ---------------------------------------------------------------- transport jobs and car hire
+
+/** A courier's ride, move or parcel job, or a car hire booking, that the customer can rate. */
+export type TransportRef = { jobId: string } | { bookingId: string };
+
+/**
+ * The courier the customer can rate for a finished transport job or car hire (with their existing
+ * rating), or null while it isn't finished. Car hire counts as finished once returned, or once the
+ * last day has passed.
+ */
+export async function reviewableTransport(customerId: string, ref: TransportRef) {
+  let courierId: string | null = null;
+  if ("jobId" in ref) {
+    const job = await db.query.transportJobs.findFirst({
+      where: and(eq(transportJobs.id, ref.jobId), eq(transportJobs.customerId, customerId)),
+      columns: { status: true, courierId: true },
+    });
+    if (job?.status === "completed") courierId = job.courierId;
+  } else {
+    const b = await db.query.carBookings.findFirst({
+      where: and(eq(carBookings.id, ref.bookingId), eq(carBookings.customerId, customerId)),
+      columns: { status: true, endDate: true },
+      with: { car: { columns: { courierId: true } } },
+    });
+    if (b && (b.status === "completed" || (b.status === "confirmed" && b.endDate < today()))) courierId = b.car.courierId;
+  }
+  if (!courierId) return null;
+  const courier = await db.query.couriers.findFirst({ where: eq(couriers.id, courierId), columns: { id: true, name: true } });
+  if (!courier) return null;
+  const review = await db.query.reviews.findFirst({
+    where: and("jobId" in ref ? eq(reviews.transportJobId, ref.jobId) : eq(reviews.carBookingId, ref.bookingId), eq(reviews.targetKey, `courier:${courier.id}`)),
+  });
+  return { courier, review: review ?? null };
+}
+
+/** Saves (or updates) the customer's rating of the courier for a transport job or car hire. */
+export async function submitTransportReview(input: { customerId: string; ref: TransportRef; rating: number; comment: string }) {
+  const rating = Math.round(input.rating);
+  if (!(rating >= 1 && rating <= 5)) throw new ReviewError("Choose between 1 and 5 stars.");
+  const raw = input.comment.trim();
+  if (raw.length > MAX_COMMENT) throw new ReviewError(`Keep comments under ${MAX_COMMENT} characters.`);
+  const allowed = await reviewableTransport(input.customerId, input.ref);
+  if (!allowed) throw new ReviewError("You can rate the courier once the job is done.");
+
+  const comment = raw ? await cleanText(raw) : null;
+  const isJob = "jobId" in input.ref;
+  const [row] = await db
+    .insert(reviews)
+    .values({
+      target: "courier",
+      targetKey: `courier:${allowed.courier.id}`,
+      courierId: allowed.courier.id,
+      customerId: input.customerId,
+      transportJobId: "jobId" in input.ref ? input.ref.jobId : null,
+      carBookingId: "bookingId" in input.ref ? input.ref.bookingId : null,
+      rating,
+      comment,
+    })
+    .onConflictDoUpdate({
+      target: isJob ? [reviews.transportJobId, reviews.targetKey] : [reviews.carBookingId, reviews.targetKey],
+      // An edit stays hidden if an admin took it down.
+      set: { rating, comment, updatedAt: new Date() },
+    })
+    .returning();
+  const owner = await ownerOfReview(row);
+  if (owner && !allowed.review) {
+    await notify([owner], { title: `New ${rating}-star rating`, body: `${isJob ? "Transport job" : "Car hire"}${comment ? `: "${comment.slice(0, 120)}"` : ""}`, href: "/courier/reviews" });
+  }
+  return row;
+}
+
+/** Average rating and count for many couriers at once (every kind of job). */
+export async function courierRatings(courierIds: string[]) {
+  if (!courierIds.length) return new Map<string, { average: number; total: number }>();
+  const rows = await db
+    .select({ courierId: reviews.courierId, average: avg(reviews.rating).mapWith(Number), total: count() })
+    .from(reviews)
+    .where(and(inArray(reviews.courierId, courierIds), eq(reviews.target, "courier"), shown))
+    .groupBy(reviews.courierId);
+  return new Map(rows.map((r) => [r.courierId!, { average: r.average, total: r.total }]));
+}
+
 /** The merchant (store owner) or courier user a review is about. */
 async function ownerOfReview(r: { storeId: string | null; courierId: string | null }) {
   if (r.storeId) {
@@ -159,7 +242,8 @@ export async function moderateReview(reviewId: string, decision: ReviewDecision,
   const outcome = decision === "hide" ? "was taken down" : decision === "restore" ? "was put back up" : "was checked and stays up";
   const href = r.courierId ? "/courier/reviews" : "/sell/reviews";
   if (r.flaggedById) await notify([r.flaggedById], { title: `A review you flagged ${outcome}`, body: note.trim() || undefined, href });
-  if (decision === "hide") await notify([r.customerId], { title: "Your review was removed", body: note.trim() || "It didn't meet the community guidelines.", href: `/account/orders/${r.orderId}` });
+  const yours = r.orderId ? `/account/orders/${r.orderId}` : r.transportJobId ? `/transport/jobs/${r.transportJobId}` : "/account/transport";
+  if (decision === "hide") await notify([r.customerId], { title: "Your review was removed", body: note.trim() || "It didn't meet the community guidelines.", href: yours });
 }
 
 // ---------------------------------------------------------------- reading

@@ -1,6 +1,8 @@
 import { CheckIcon, PhoneIcon } from "lucide-react";
 import { data, Form, Link, useNavigation } from "react-router";
 import { Container, FormError, PageHeader } from "~/components/page";
+import { RateCourier } from "~/components/rate-courier";
+import { RatingBadge } from "~/components/rating";
 import { SafeImage } from "~/components/safe-image";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
@@ -9,6 +11,7 @@ import { requireCustomer } from "~/lib/auth.server";
 import { date, money, timeAgo } from "~/lib/format";
 import { usePolling } from "~/lib/hooks";
 import { JOB_STATUS, TRANSPORT_LABEL } from "~/lib/transport";
+import { courierRatings, ReviewError, reviewableTransport, submitTransportReview } from "~/lib/reviews.server";
 import { acceptOffer, cancelJob, completeJob, jobForCustomer, TransportError } from "~/lib/transport.server";
 import { str } from "~/lib/utils";
 import type { Route } from "./+types/transport.job";
@@ -19,7 +22,11 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const user = await requireCustomer(request);
   const job = await jobForCustomer(user.id, params.id);
   if (!job) throw data("Request not found", { status: 404 });
-  return { job };
+  const [ratings, reviewable] = await Promise.all([
+    courierRatings(job.offers.map((o) => o.courier.id)),
+    job.status === "completed" ? reviewableTransport(user.id, { jobId: job.id }) : null,
+  ]);
+  return { job, ratings: Object.fromEntries(ratings), reviewable };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -27,18 +34,22 @@ export async function action({ request, params }: Route.ActionArgs) {
   const form = await request.formData();
   try {
     const intent = form.get("intent");
+    if (intent === "rate") {
+      await submitTransportReview({ customerId: user.id, ref: { jobId: params.id }, rating: Number(form.get("rating")), comment: String(form.get("comment") ?? "") });
+      return { ok: "Thanks for your rating!" };
+    }
     if (intent === "accept") await acceptOffer(user.id, str(form.get("offerId")));
     else if (intent === "cancel") await cancelJob(user.id, params.id);
     else if (intent === "complete") await completeJob(params.id, { customerId: user.id });
     return { ok: true };
   } catch (e) {
-    if (e instanceof TransportError) return { error: e.message };
+    if (e instanceof TransportError || e instanceof ReviewError) return { error: e.message };
     throw e;
   }
 }
 
 export default function TransportJob({ loaderData, actionData }: Route.ComponentProps) {
-  const { job } = loaderData;
+  const { job, ratings, reviewable } = loaderData;
   const busy = useNavigation().state !== "idle";
   // New offers arrive while the customer waits.
   usePolling(job.status === "open" ? 15_000 : 5 * 60_000);
@@ -58,6 +69,15 @@ export default function TransportJob({ loaderData, actionData }: Route.Component
         }
       />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
+      {reviewable ? (
+        <div className="mb-6">
+          <RateCourier
+            courierName={reviewable.courier.name}
+            review={reviewable.review}
+            result={actionData && "ok" in actionData && typeof actionData.ok === "string" ? { ok: actionData.ok } : null}
+          />
+        </div>
+      ) : null}
 
       <Card className="mb-6">
         <CardContent className="grid gap-2 pt-5 text-sm">
@@ -115,7 +135,10 @@ export default function TransportJob({ loaderData, actionData }: Route.Component
             .map((o) => (
               <div key={o.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3">
                 <div className="grid flex-1 gap-0.5 text-sm">
-                  <p className="font-bold">{o.courier.name}</p>
+                  <p className="flex flex-wrap items-center gap-2 font-bold">
+                    {o.courier.name}
+                    <RatingBadge average={ratings[o.courier.id]?.average} total={ratings[o.courier.id]?.total ?? 0} />
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {[o.courier.vehicleType ?? o.courier.vehicle, o.courier.capacity, o.courier.plateNumber].filter(Boolean).join(" · ")}
                   </p>

@@ -20,6 +20,8 @@ export type OwnerReview = {
   createdAt: Date | string;
   product: { id: string; title: string } | null;
   customer: { name: string };
+  transportJobId?: string | null;
+  carBookingId?: string | null;
 };
 
 /** A merchant's or courier's reviews, with reply (merchants) and "ask an admin to check". */
@@ -50,7 +52,15 @@ function OwnerReviewCard({ review: r, canReply }: { review: OwnerReview; canRepl
           <Stars value={r.rating} />
           <span className="text-sm font-semibold">{r.customer.name.split(" ")[0]}</span>
           <span className="text-xs text-muted-foreground">
-            {r.target === "product" && r.product ? `on ${r.product.title}` : r.target === "store" ? "about your store" : "about your delivery"} · {timeAgo(r.createdAt)}
+            {r.target === "product" && r.product
+              ? `on ${r.product.title}`
+              : r.target === "store"
+                ? "about your store"
+                : r.transportJobId
+                  ? "about a transport job"
+                  : r.carBookingId
+                    ? "about a car hire"
+                    : "about your delivery"} · {timeAgo(r.createdAt)}
           </span>
           {r.status === "flagged" ? <Badge variant="highlight">Waiting for admin</Badge> : null}
           {r.status === "hidden" ? <Badge variant="muted">Taken down</Badge> : null}

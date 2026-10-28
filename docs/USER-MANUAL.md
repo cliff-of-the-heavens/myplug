@@ -176,6 +176,9 @@ Open **Transport** in the main menu. The drivers and couriers there are register
   listed on the car's page.
 - Can't find the right car? **Post a car hire request** with your dates and owners will offer theirs.
 - **Account menu → My transport** lists your requests and car bookings.
+- **Rate the courier:** once a job is marked done, or a hire car is returned (or its last day has passed),
+  give 1 to 5 stars and an optional comment. Ratings show next to couriers' offers and on their hire cars,
+  so other customers can choose well.
 
 ### Hiring a handyman
 
@@ -370,7 +373,8 @@ as a normal order.
 5. Each job shows the store, pickup address and phone, pickup time, items, destination and handover
    instructions. At the store, give the **pickup code**.
 6. On arrival, mark the order **delivered**, noting who received it or where you left it.
-7. **My ratings** shows customers' ratings. You can ask an admin to check an unfair review.
+7. **My ratings** shows customers' ratings, for store deliveries, transport jobs and car hire. You can ask an
+   admin to check an unfair review.
 
 ### Rides, moving, parcels and car hire
 

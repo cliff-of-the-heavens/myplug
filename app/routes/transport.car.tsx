@@ -3,6 +3,7 @@ import { MapPinIcon, UsersIcon } from "lucide-react";
 import { data, Form, Link, redirect, useNavigation } from "react-router";
 import { AuthLink } from "~/components/auth-dialog";
 import { Container, FormError } from "~/components/page";
+import { RatingBadge } from "~/components/rating";
 import { SafeImage } from "~/components/safe-image";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -46,7 +47,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function HireCar({ loaderData, actionData }: Route.ComponentProps) {
-  const { car, taken, viewer } = loaderData;
+  const { car, taken, viewer, ownerRating } = loaderData;
   const busy = useNavigation().state !== "idle";
   const photos = [car.imageUrl, ...car.images].filter((u): u is string => !!u);
   const [photo, setPhoto] = useState(photos[0] ?? null);
@@ -85,7 +86,10 @@ export default function HireCar({ loaderData, actionData }: Route.ComponentProps
               <MapPinIcon className="size-4" /> Collect at {car.location}
             </span>
           </p>
-          <p className="text-sm">Owner: {car.courier.name} (registered, ID-checked courier)</p>
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            Owner: {car.courier.name} (registered, ID-checked courier)
+            <RatingBadge average={ownerRating?.average} total={ownerRating?.total ?? 0} />
+          </p>
         </div>
         <div className="grid gap-1">
           {car.selfDrive ? (

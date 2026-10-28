@@ -785,9 +785,10 @@ export const reviews = pgTable(
     customerId: uuid("customer_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    orderId: uuid("order_id")
-      .notNull()
-      .references(() => orders.id, { onDelete: "cascade" }),
+    // What was rated: a store order, or a courier's transport job or car hire booking
+    orderId: uuid("order_id").references(() => orders.id, { onDelete: "cascade" }),
+    transportJobId: uuid("transport_job_id").references((): AnyPgColumn => transportJobs.id, { onDelete: "cascade" }),
+    carBookingId: uuid("car_booking_id").references((): AnyPgColumn => carBookings.id, { onDelete: "cascade" }),
     rating: integer("rating").notNull(),
     comment: text("comment"), // obscene words are masked before saving
     status: reviewVisibility("status").notNull().default("visible"),
@@ -801,6 +802,8 @@ export const reviews = pgTable(
   },
   (t) => [
     uniqueIndex("reviews_order_target_idx").on(t.orderId, t.targetKey),
+    uniqueIndex("reviews_transport_job_idx").on(t.transportJobId, t.targetKey),
+    uniqueIndex("reviews_car_booking_idx").on(t.carBookingId, t.targetKey),
     index("reviews_product_idx").on(t.productId, t.status),
     index("reviews_store_idx").on(t.storeId, t.status),
     index("reviews_courier_idx").on(t.courierId, t.status),
