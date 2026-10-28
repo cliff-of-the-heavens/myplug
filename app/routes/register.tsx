@@ -142,7 +142,7 @@ export default function Register({ loaderData }: Route.ComponentProps) {
   const [params] = useSearchParams();
   return (
     <div className="grid place-items-center px-4 py-10">
-      <Card className="w-full max-w-lg">
+      <Card className="w-full max-w-xl">
         <CardHeader className="text-center">
           <Logo className="mb-2 justify-self-center" />
           <CardTitle className="text-2xl">Create your account</CardTitle>

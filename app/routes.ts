@@ -16,6 +16,12 @@ export default [
   route("terms", "routes/terms.tsx"),
   route("notifications", "routes/notifications.tsx"),
 
+  // Transport: rides, moves, parcels and car hire from registered couriers
+  route("transport", "routes/transport.tsx"),
+  route("transport/new", "routes/transport.new.tsx"),
+  route("transport/jobs/:id", "routes/transport.job.tsx"),
+  route("transport/cars/:id", "routes/transport.car.tsx"),
+
   // Auth
   route("login", "routes/login.tsx"),
   route("register", "routes/register.tsx"),
@@ -37,11 +43,17 @@ export default [
   route("account/coupons", "routes/account.coupons.tsx"),
   route("account/ad-free", "routes/account.ad-free.tsx"),
   route("account/offers", "routes/account.offers.tsx"),
+  route("account/transport", "routes/account.transport.tsx"),
 
   // Couriers
   route("courier", "routes/courier.tsx"),
   route("courier/profile", "routes/courier.profile.tsx"),
   route("courier/reviews", "routes/courier.reviews.tsx"),
+  route("courier/transport", "routes/courier.transport.tsx"),
+  route("courier/transport/:id", "routes/courier.transport-job.tsx"),
+  route("courier/cars", "routes/courier.cars.tsx"),
+  route("courier/cars/new", "routes/courier.car-form.tsx", { id: "courier-car-new" }),
+  route("courier/cars/:id", "routes/courier.car-form.tsx", { id: "courier-car-edit" }),
   route("alerts/unsubscribe", "routes/alerts.unsubscribe.tsx"),
 
   // Image requests board + messaging (customers and merchants)

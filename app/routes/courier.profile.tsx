@@ -6,7 +6,8 @@ import { Container, FormError, PageHeader } from "~/components/page";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Field, Input, Textarea } from "~/components/ui/input";
+import { Field, Input, NativeSelect, Textarea } from "~/components/ui/input";
+import { TRANSPORT_TYPES, VEHICLE_TYPES } from "~/lib/transport";
 import { requireCourier } from "~/lib/auth.server";
 import { CourierError, courierFromForm, getCourier, saveProfile, saveRates } from "~/lib/couriers.server";
 import { uploadPrivate, UploadError } from "~/lib/upload.server";
@@ -116,6 +117,36 @@ export default function CourierProfile({ loaderData, actionData }: Route.Compone
                 <Input name="plateNumber" defaultValue={courier.plateNumber ?? ""} />
               </Field>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Vehicle type">
+                <NativeSelect name="vehicleType" defaultValue={courier.vehicleType ?? ""}>
+                  <option value="">Choose...</option>
+                  {VEHICLE_TYPES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+              <Field label="Capacity (optional)">
+                <Input name="capacity" defaultValue={courier.capacity ?? ""} placeholder="e.g. 4 passengers, 3-tonne truck" />
+              </Field>
+            </div>
+            <fieldset className="grid gap-2">
+              <legend className="mb-1 text-sm font-semibold">Besides store deliveries, I also offer</legend>
+              <p className="-mt-1 text-xs text-muted-foreground">You're told about customer requests for these, and can send your price.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {TRANSPORT_TYPES.map((t) => (
+                  <label key={t.value} className="flex items-start gap-2 rounded-xl border p-3 text-sm">
+                    <input type="checkbox" name="services" value={t.value} defaultChecked={courier.services.includes(t.value)} className="mt-0.5 size-4 accent-primary" />
+                    <span className="grid">
+                      <span className="font-semibold">{t.short}</span>
+                      <span className="text-xs text-muted-foreground">{t.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <Field label="About you (optional)">
               <Textarea name="bio" rows={2} defaultValue={courier.bio ?? ""} className="min-h-0" placeholder="Areas you know, hours you work..." />
             </Field>

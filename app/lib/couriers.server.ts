@@ -2,6 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
 import { notify } from "./notify.server";
 import { parseMoney } from "./format";
+import { isTransportType, VEHICLE_TYPES } from "./transport";
 import { str } from "./utils";
 
 const { couriers, courierRates, courierQuotes, deliveries, orders, stores } = schema;
@@ -18,7 +19,19 @@ export function getCourier(courierId: string) {
 /** Saves the courier's profile. Changing identity details sends the account back for review. */
 export async function saveProfile(
   courierId: string,
-  input: { name: string; phone: string; vehicle: string; plateNumber: string; nationalIdNumber: string; bio: string; facePhotoKey: string | null; idDocumentKey: string | null },
+  input: {
+    name: string;
+    phone: string;
+    vehicle: string;
+    plateNumber: string;
+    nationalIdNumber: string;
+    bio: string;
+    services: string[];
+    vehicleType: string;
+    capacity: string;
+    facePhotoKey: string | null;
+    idDocumentKey: string | null;
+  },
 ) {
   const current = await getCourier(courierId);
   if (!current) throw new CourierError("Courier not found.");
@@ -43,6 +56,10 @@ export async function saveProfile(
       plateNumber: input.plateNumber.slice(0, 20) || null,
       nationalIdNumber: input.nationalIdNumber.slice(0, 40),
       bio: input.bio.slice(0, 500) || null,
+      // What they offer besides store deliveries; changing it doesn't need a new review.
+      services: input.services.filter(isTransportType),
+      vehicleType: (VEHICLE_TYPES as readonly string[]).includes(input.vehicleType) ? input.vehicleType : null,
+      capacity: input.capacity.slice(0, 60) || null,
       facePhotoKey: face,
       idDocumentKey: idDoc,
       status,
@@ -151,6 +168,9 @@ export function courierFromForm(form: FormData) {
     plateNumber: str(form.get("plateNumber")),
     nationalIdNumber: str(form.get("nationalIdNumber")),
     bio: str(form.get("bio")),
+    services: form.getAll("services").map(String),
+    vehicleType: str(form.get("vehicleType")),
+    capacity: str(form.get("capacity")),
   };
 }
 

@@ -7,6 +7,7 @@ import {
   HeartIcon,
   ShoppingCartIcon,
   BikeIcon,
+  CarFrontIcon,
   HomeIcon,
   ImagePlusIcon,
   LayoutDashboardIcon,
@@ -117,11 +118,18 @@ function AccountMenu({ user }: { user: SessionUser }) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {user.role === "courier" ? (
-          <DropdownMenuItem asChild>
-            <Link to="/courier">
-              <BikeIcon /> Courier dashboard
-            </Link>
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem asChild>
+              <Link to="/courier">
+                <BikeIcon /> Courier dashboard
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/courier/transport">
+                <CarFrontIcon /> Transport jobs
+              </Link>
+            </DropdownMenuItem>
+          </>
         ) : null}
         {user.role === "merchant" ? (
           <>
@@ -152,6 +160,11 @@ function AccountMenu({ user }: { user: SessionUser }) {
             <DropdownMenuItem asChild>
               <Link to="/account/coupons">
                 <GiftIcon /> Gift coupons
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link to="/account/transport">
+                <CarFrontIcon /> My transport
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -375,11 +388,12 @@ export const SUBMENU_CHIP = {
   idle: "hover:border-primary/40 in-data-[header-collapsed]:border-transparent in-data-[header-collapsed]:bg-white/15 in-data-[header-collapsed]:text-white in-data-[header-collapsed]:hover:bg-white/30",
 };
 
-export const TOP_MENU: { key: ProductKind | "auto" | "handyman"; label: string; to: string }[] = [
+export const TOP_MENU: { key: ProductKind | "auto" | "handyman" | "transport"; label: string; to: string }[] = [
   { key: "product", label: "All products", to: "/search?kind=product" },
   { key: "auto", label: "Auto", to: `/search?category=${AUTO_CATEGORY_SLUG}` },
   { key: "service", label: "Services", to: "/search?kind=service" },
   { key: "handyman", label: "Handymen", to: `/search?group=${HANDYMAN_GROUP}` },
+  { key: "transport", label: "Transport", to: "/transport" },
   { key: "digital", label: "Downloads", to: "/search?kind=digital" },
   { key: "property", label: "Real Estate", to: "/search?kind=property" },
 ];
@@ -400,7 +414,9 @@ function TopMenu({ categories }: { categories: Category[] }) {
   const fromCategory = chosen?.group === HANDYMAN_GROUP ? "handyman" : chosen?.kind;
   const kind = params.get("kind") as ProductKind | null;
   // A typed search with no menu chosen looks everywhere, so no tab is highlighted.
-  const active: (typeof TOP_MENU)[number]["key"] | null = !onBrowse
+  const active: (typeof TOP_MENU)[number]["key"] | null = location.pathname.startsWith("/transport")
+    ? "transport"
+    : !onBrowse
     ? null
     : category === AUTO_CATEGORY_SLUG
       ? "auto"
@@ -485,6 +501,7 @@ export function SiteFooter() {
           <Link to="/search" className="text-muted-foreground hover:text-primary">All products</Link>
           <Link to="/search?sort=newest" className="text-muted-foreground hover:text-primary">New arrivals</Link>
           <Link to="/requests" className="text-muted-foreground hover:text-primary">Request something special</Link>
+          <Link to="/transport" className="text-muted-foreground hover:text-primary">Rides, moving & car hire</Link>
         </div>
         <div className="grid content-start gap-2">
           <p className="font-bold">Sell</p>

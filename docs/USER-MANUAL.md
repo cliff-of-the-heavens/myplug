@@ -63,7 +63,7 @@ your next visit.
 
 The coloured bar under the search box is the **main menu**:
 
-**All products · Auto · Services · Handymen · Downloads · Real Estate**
+**All products · Auto · Services · Handymen · Transport · Downloads · Real Estate**
 
 Choose one and the browse page shows its **subcategories** as chips (e.g. under All products: Electronics,
 Fashion...; under Handymen: the trades, such as Plumbing or Electronics repair). With nothing chosen, browsing shows **All products**. The search box searches everything.
@@ -160,6 +160,22 @@ Time limits start then. Online-only options play in the browser.
 
 Can't find something? **Requests → Post a request** with a photo and description. Merchants who can make or
 source it message you.
+
+### Rides, moving, parcels and car hire (Transport)
+
+Open **Transport** in the main menu. The drivers and couriers there are registered and ID-checked by MyPlug.
+
+- **Book a ride, a move or a parcel run:** choose what you need, enter pickup and drop-off, *as soon as
+  possible* or a time, what's being moved, an optional budget and your phone number. Couriers who offer that
+  service are told straight away and send you their price (the page updates by itself). **Accept** one:
+  you then see their phone number and number plate, and they get yours. Pay them directly, as agreed.
+  **Mark as done** afterwards, or **Cancel request**.
+- **Hire a car:** browse **Cars for hire** (filter by seats or *with a driver*), open one, choose the first
+  and last day and whether you want a driver, and **Request booking**. The total is worked out for you. The
+  owner confirms or declines; once confirmed you see their phone number. Days that are already booked are
+  listed on the car's page.
+- Can't find the right car? **Post a car hire request** with your dates and owners will offer theirs.
+- **Account menu → My transport** lists your requests and car bookings.
 
 ### Hiring a handyman
 
@@ -355,6 +371,19 @@ as a normal order.
    instructions. At the store, give the **pickup code**.
 6. On arrival, mark the order **delivered**, noting who received it or where you left it.
 7. **My ratings** shows customers' ratings. You can ask an admin to check an unfair review.
+
+### Rides, moving, parcels and car hire
+
+8. On your **Profile**, choose your **vehicle type** and **capacity**, and tick what else you offer:
+   **Taxi**, **Moving**, **Parcel** and **Car hire**.
+9. **Transport jobs** lists customers' open requests for those services (you're notified of each new one).
+   Open one and **send your price** with a short note (vehicle, arrival time). You can change or withdraw
+   it while the request is open. If the customer accepts, you get their phone number; **Mark as done** when
+   finished.
+10. **Hire cars:** add each car with photos, seats, gearbox, price per day, where it's collected, and whether
+    it's self-drive, with a driver (and the extra per day), or both. Booking requests appear at the top:
+    **Confirm** or **Decline** (with a reason). You can't confirm two bookings on the same days. Press **Car
+    returned** at the end.
 
 ---
 

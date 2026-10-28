@@ -63,7 +63,13 @@ export default function CourierDashboard({ loaderData, actionData }: Route.Compo
         title="Courier dashboard"
         description={courier.name}
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link to="/courier/transport">Transport jobs</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link to="/courier/cars">Hire cars</Link>
+            </Button>
             <Button asChild variant="outline">
               <Link to="/courier/reviews">My ratings</Link>
             </Button>

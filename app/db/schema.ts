@@ -411,11 +411,112 @@ export const couriers = pgTable("couriers", {
   facePhotoKey: text("face_photo_key"), // private storage
   idDocumentKey: text("id_document_key"), // private storage
   bio: text("bio"),
+  // Transport for hire, beyond store deliveries: parcel | moving | taxi | car_hire
+  services: text("services").array().notNull().default(sql`'{}'::text[]`),
+  vehicleType: text("vehicle_type"), // motorbike | car | minibus | pickup | van | truck
+  capacity: text("capacity"), // seats, or load, e.g. "4 passengers", "3-tonne truck"
   status: reviewStatus("status").notNull().default("pending"),
   reviewNote: text("review_note"),
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   ...timestamps,
 });
+
+/** A customer's transport request: a parcel run, house move, taxi ride or car hire. Couriers send offers. */
+export const transportJobs = pgTable(
+  "transport_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(), // TR-XXXXXX
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").$type<TransportType>().notNull(),
+    pickup: text("pickup").notNull(), // car hire: where to collect the car
+    dropoff: text("dropoff"), // not for car hire
+    when: timestamp("when", { withTimezone: true }), // null = as soon as possible
+    untilDate: date("until_date", { mode: "string" }), // car hire: last day
+    passengers: integer("passengers"), // taxi / car hire
+    details: text("details").notNull().default(""), // what's being moved, number of rooms, luggage...
+    imageUrl: text("image_url"),
+    budgetCents: money("budget_cents"),
+    contactPhone: text("contact_phone").notNull(), // shared with the courier once booked
+    status: text("status").$type<TransportJobStatus>().notNull().default("open"),
+    courierId: uuid("courier_id").references((): AnyPgColumn => couriers.id, { onDelete: "set null" }), // the one booked
+    priceCents: money("price_cents"), // agreed price
+    bookedAt: timestamp("booked_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [index("transport_jobs_status_idx").on(t.status, t.type), index("transport_jobs_customer_idx").on(t.customerId)],
+);
+
+/** A courier's price for a transport request. */
+export const transportOffers = pgTable(
+  "transport_offers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => transportJobs.id, { onDelete: "cascade" }),
+    courierId: uuid("courier_id")
+      .notNull()
+      .references((): AnyPgColumn => couriers.id, { onDelete: "cascade" }),
+    priceCents: money("price_cents").notNull(),
+    note: text("note"), // e.g. vehicle, arrival time
+    status: text("status").$type<"offered" | "accepted" | "declined" | "withdrawn">().notNull().default("offered"),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("transport_offers_job_courier_idx").on(t.jobId, t.courierId)],
+);
+
+/** A car a courier rents out, booked by the day. */
+export const hireCars = pgTable(
+  "hire_cars",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    courierId: uuid("courier_id")
+      .notNull()
+      .references((): AnyPgColumn => couriers.id, { onDelete: "cascade" }),
+    title: text("title").notNull(), // e.g. "2016 Toyota Axio"
+    description: text("description").notNull().default(""),
+    seats: integer("seats").notNull().default(5),
+    transmission: text("transmission"), // automatic | manual
+    dailyCents: money("daily_cents").notNull(), // self-drive (or with driver only, if selfDrive is false)
+    selfDrive: boolean("self_drive").notNull().default(true), // can be hired without a driver
+    driverDailyCents: money("driver_daily_cents"), // extra per day with a driver; null = no driver offered
+    location: text("location").notNull(), // where it's collected
+    imageUrl: text("image_url"),
+    images: text("images").array().notNull().default(sql`'{}'::text[]`),
+    isActive: boolean("is_active").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [index("hire_cars_courier_idx").on(t.courierId)],
+);
+
+/** A customer's booking of a hire car for a range of days. */
+export const carBookings = pgTable(
+  "car_bookings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(), // CH-XXXXXX
+    carId: uuid("car_id")
+      .notNull()
+      .references(() => hireCars.id, { onDelete: "cascade" }),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    startDate: date("start_date", { mode: "string" }).notNull(),
+    endDate: date("end_date", { mode: "string" }).notNull(), // inclusive
+    withDriver: boolean("with_driver").notNull().default(false),
+    totalCents: money("total_cents").notNull(),
+    note: text("note"),
+    contactPhone: text("contact_phone").notNull(), // shared with the car's owner
+    status: text("status").$type<"requested" | "confirmed" | "declined" | "cancelled" | "completed">().notNull().default("requested"),
+    ownerNote: text("owner_note"), // the courier's reply when declining
+    ...timestamps,
+  },
+  (t) => [index("car_bookings_car_idx").on(t.carId, t.startDate), index("car_bookings_customer_idx").on(t.customerId)],
+);
 
 /** A courier's estimated price for delivering to an area. */
 export const courierRates = pgTable(
@@ -1490,6 +1591,30 @@ export const conversationsRelations = relations(conversations, ({ one, many }) =
 export const messagesRelations = relations(messages, ({ one }) => ({
   conversation: one(conversations, { fields: [messages.conversationId], references: [conversations.id] }),
   sender: one(users, { fields: [messages.senderId], references: [users.id] }),
+}));
+
+export type TransportType = "parcel" | "moving" | "taxi" | "car_hire";
+export type TransportJobStatus = "open" | "booked" | "completed" | "cancelled";
+
+export const transportJobsRelations = relations(transportJobs, ({ one, many }) => ({
+  customer: one(users, { fields: [transportJobs.customerId], references: [users.id] }),
+  courier: one(couriers, { fields: [transportJobs.courierId], references: [couriers.id] }),
+  offers: many(transportOffers),
+}));
+
+export const transportOffersRelations = relations(transportOffers, ({ one }) => ({
+  job: one(transportJobs, { fields: [transportOffers.jobId], references: [transportJobs.id] }),
+  courier: one(couriers, { fields: [transportOffers.courierId], references: [couriers.id] }),
+}));
+
+export const hireCarsRelations = relations(hireCars, ({ one, many }) => ({
+  courier: one(couriers, { fields: [hireCars.courierId], references: [couriers.id] }),
+  bookings: many(carBookings),
+}));
+
+export const carBookingsRelations = relations(carBookings, ({ one }) => ({
+  car: one(hireCars, { fields: [carBookings.carId], references: [hireCars.id] }),
+  customer: one(users, { fields: [carBookings.customerId], references: [users.id] }),
 }));
 
 export type User = typeof users.$inferSelect;

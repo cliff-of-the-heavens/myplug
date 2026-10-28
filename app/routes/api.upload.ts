@@ -1,4 +1,4 @@
-import { requireMerchant } from "~/lib/auth.server";
+import { requireCourier, requireMerchant, requireUser } from "~/lib/auth.server";
 import { uploadImage, UploadError } from "~/lib/upload.server";
 import type { Route } from "./+types/api.upload";
 
@@ -7,7 +7,9 @@ import type { Route } from "./+types/api.upload";
  * photo by photo so no single request goes over Vercel's 4.5 MB body limit.
  */
 export async function action({ request }: Route.ActionArgs) {
-  await requireMerchant(request);
+  // Merchants' galleries, and couriers' hire-car photos
+  if ((await requireUser(request)).role === "courier") await requireCourier(request);
+  else await requireMerchant(request);
   const form = await request.formData();
   try {
     const url = await uploadImage(form.get("file"), "gallery");

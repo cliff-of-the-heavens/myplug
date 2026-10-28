@@ -356,7 +356,7 @@ export function AuthDialogProvider({ signedIn, children }: { signedIn: boolean; 
     <AuthContext.Provider value={{ open: (mode, opts = {}) => setState({ mode, opts }) }}>
       {children}
       <Dialog open={!!state} onOpenChange={(open) => !open && setState(null)}>
-        <DialogContent className="max-h-[92dvh] overflow-y-auto">
+        <DialogContent className={cn("max-h-[92dvh] overflow-y-auto", state?.mode === "register" && "max-w-xl")}>
           {state?.mode === "register" ? (
             <>
               <DialogHeader className="text-center">
