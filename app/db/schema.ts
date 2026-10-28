@@ -182,8 +182,28 @@ export const stores = pgTable("stores", {
   trades: text("trades").array().notNull().default(sql`'{}'::text[]`), // trade category slugs; matching jobs are sent to them
   serviceArea: text("service_area"), // towns/districts they work in
   workReferences: text("work_references"), // past clients and jobs, shown on the profile
+  // Verification: an admin marks a store verified after checking its registration, address and contacts
+  physicalAddress: text("physical_address"), // the business's premises; items are there unless they say otherwise
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  verifiedNote: text("verified_note"), // what the admin checked
   ...timestamps,
 });
+
+/** A Google or Facebook account someone signs in with. */
+export const userIdentities = pgTable(
+  "user_identities",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(), // google | facebook
+    providerUserId: text("provider_user_id").notNull(),
+    email: text("email"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("user_identities_provider_idx").on(t.provider, t.providerUserId), index("user_identities_user_idx").on(t.userId)],
+);
 
 /* -------------------------------------------------------------- catalogue */
 
@@ -235,6 +255,8 @@ export const products = pgTable(
     propertyFeatures: jsonb("property_features").$type<PropertyFeatures>(),
     autoDetails: jsonb("auto_details").$type<AutoDetails>(), // Auto category: vehicle spec sheet or spare-part details
     soldAt: timestamp("sold_at", { withTimezone: true }), // property sold or let to the accepted offer
+    // Where the item can be seen or collected; empty means the store's physical address
+    locations: text("locations").array().notNull().default(sql`'{}'::text[]`),
     ...timestamps,
   },
   (t) => [

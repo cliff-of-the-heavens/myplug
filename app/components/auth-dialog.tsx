@@ -2,12 +2,14 @@ import { BikeIcon, HourglassIcon, ShoppingBagIcon, StoreIcon, WrenchIcon } from 
 import { createContext, useContext, useEffect, useState } from "react";
 import { Link, useFetcher, useLocation, useRouteLoaderData, type LinkProps } from "react-router";
 import { HANDYMAN_GROUP } from "~/lib/handyman";
+import { PROVIDER_NAME, type ProviderId } from "~/lib/oauth";
 import { cn } from "~/lib/utils";
 import type { loader as rootLoader } from "~/root";
 import type { action as loginAction } from "~/routes/login";
 import type { action as forgotAction } from "~/routes/forgot-password";
 import type { action as registerAction } from "~/routes/register";
 import { FormError } from "./page";
+import { SocialButtons } from "./social-buttons";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Field, Input, Textarea } from "./ui/input";
@@ -49,13 +51,24 @@ function SwitchLink({ mode, onSwitch, children }: { mode: AuthMode; onSwitch?: (
   );
 }
 
-export function LoginForm({ redirectTo, onSwitch, onForgot }: { redirectTo: string; onSwitch?: () => void; onForgot?: () => void }) {
+export function LoginForm({
+  redirectTo,
+  onSwitch,
+  onForgot,
+  initialError,
+}: {
+  redirectTo: string;
+  onSwitch?: () => void;
+  onForgot?: () => void;
+  initialError?: string | null; // e.g. a Google/Facebook sign-in that didn't work
+}) {
   const fetcher = useFetcher<typeof loginAction>();
   const busy = fetcher.state !== "idle";
   return (
     <fetcher.Form method="post" action="/login" className="grid gap-4">
       <input type="hidden" name="redirectTo" value={redirectTo} />
-      <FormError error={fetcher.data?.error} />
+      <FormError error={fetcher.data?.error ?? initialError} />
+      <SocialButtons redirectTo={redirectTo || undefined} />
       <Field label="Email">
         <Input name="email" type="email" autoComplete="email" required autoFocus />
       </Field>
@@ -119,14 +132,19 @@ export function ForgotForm({ onBack }: { onBack?: () => void }) {
   );
 }
 
+/** A Google/Facebook account the person is finishing signing up with. */
+type SocialSignup = { provider: ProviderId; email: string | null; name: string };
+
 export function RegisterForm({
   redirectTo,
   defaultRole = "customer",
   onSwitch,
+  social,
 }: {
   redirectTo: string;
   defaultRole?: Role;
   onSwitch?: () => void;
+  social?: SocialSignup | null;
 }) {
   const fetcher = useFetcher<typeof registerAction>();
   const [role, setRole] = useState<Role>(defaultRole);
@@ -168,18 +186,37 @@ export function RegisterForm({
         ))}
       </div>
 
+      {social ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-secondary/60 p-3 text-sm">
+          <span className="flex-1">
+            Signing up with <strong>{PROVIDER_NAME[social.provider]}</strong>
+            {social.email ? <> as <strong>{social.email}</strong></> : null}. No password needed.
+          </span>
+          <button type="submit" name="intent" value="forget-social" formNoValidate className="text-xs font-semibold text-primary hover:underline">
+            Not you?
+          </button>
+        </div>
+      ) : (
+        <SocialButtons role={role} redirectTo={redirectTo || undefined} />
+      )}
+
       <Field label="Full name" error={errors.name?.[0]}>
-        <Input name="name" autoComplete="name" required />
+        <Input name="name" autoComplete="name" required defaultValue={social?.name} />
       </Field>
-      <Field label="Email" error={errors.email?.[0]}>
-        <Input name="email" type="email" autoComplete="email" required />
-      </Field>
+      {social?.email ? null : (
+        <Field label="Email" error={errors.email?.[0]}>
+          <Input name="email" type="email" autoComplete="email" required />
+        </Field>
+      )}
+      {social?.email && errors.email?.[0] ? <FormError error={errors.email[0]} /> : null}
       <Field label={role === "courier" || role === "handyman" ? "Phone" : "Phone (optional)"} error={errors.phone?.[0]}>
         <Input name="phone" type="tel" autoComplete="tel" required={role === "courier" || role === "handyman"} />
       </Field>
-      <Field label="Password" error={errors.password?.[0]} hint="At least 8 characters">
-        <Input name="password" type="password" autoComplete="new-password" required minLength={8} />
-      </Field>
+      {social ? null : (
+        <Field label="Password" error={errors.password?.[0]} hint="At least 8 characters">
+          <Input name="password" type="password" autoComplete="new-password" required minLength={8} />
+        </Field>
+      )}
 
       {role === "merchant" ? (
         <div className="grid gap-4 rounded-xl bg-secondary/60 p-4">

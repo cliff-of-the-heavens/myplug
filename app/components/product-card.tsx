@@ -1,4 +1,4 @@
-import { CalendarCheckIcon, DownloadIcon, GavelIcon, HouseIcon, SparklesIcon } from "lucide-react";
+import { BadgeCheckIcon, CalendarCheckIcon, DownloadIcon, GavelIcon, HouseIcon, SparklesIcon } from "lucide-react";
 import { Link } from "react-router";
 import type { ProductCardData } from "~/lib/catalog.server";
 import { money, stockLabel } from "~/lib/format";
@@ -60,7 +60,10 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
             </Badge>
           ) : null}
         </div>
-        <FavouriteButton productId={product.id} className="absolute top-2 right-2" />
+        <div className="absolute top-2 right-2 flex flex-col items-center gap-1.5">
+          <FavouriteButton productId={product.id} />
+          {product.storeVerified ? <VerifiedTick /> : null}
+        </div>
         {product.soldAt ? (
           <span className="absolute inset-x-0 bottom-0 bg-destructive py-1 text-center text-xs font-bold tracking-wide text-white uppercase">
             {soldWord(product.listingType)}
@@ -124,5 +127,19 @@ export function ProductShelf({ products }: { products: ProductCardData[] }) {
         <ProductCard key={p.id} product={p} className="w-40 shrink-0 snap-start sm:w-48" />
       ))}
     </div>
+  );
+}
+
+/** Green tick in a card's corner: the seller is a Verified merchant. */
+export function VerifiedTick({ className }: { className?: string }) {
+  return (
+    <span
+      title="Verified merchant: MyPlug checked their registration, address and contacts"
+      aria-label="Verified merchant"
+      role="img"
+      className={cn("flex size-8 items-center justify-center rounded-full bg-success text-white shadow-md ring-2 ring-white", className)}
+    >
+      <BadgeCheckIcon className="size-5" />
+    </span>
   );
 }

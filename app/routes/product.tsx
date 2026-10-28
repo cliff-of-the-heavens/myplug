@@ -1,6 +1,7 @@
 import { and, asc, eq, isNotNull, isNull, ne, sql } from "drizzle-orm";
 import {
   CalendarCheckIcon,
+  MapPinIcon,
   MessageCircleIcon,
   MinusIcon,
   PencilIcon,
@@ -24,7 +25,7 @@ import { data, Form, Link, redirect, useNavigation } from "react-router";
 import { AuthLink } from "~/components/auth-dialog";
 import { FollowStoreButton } from "~/components/follow-store";
 import { FormError, Container } from "~/components/page";
-import { ProductShelf } from "~/components/product-card";
+import { ProductShelf, VerifiedTick } from "~/components/product-card";
 import { ReportButton } from "~/components/report-button";
 import { SafeImage } from "~/components/safe-image";
 import { Badge } from "~/components/ui/badge";
@@ -73,7 +74,19 @@ async function loadProduct(id: string) {
     // Only public store fields: review notes and other admin data must not reach the page.
     with: {
       store: {
-        columns: { id: true, ownerId: true, name: true, slug: true, currency: true, status: true, createdAt: true, deliveryMode: true, preferredCourierId: true },
+        columns: {
+          id: true,
+          ownerId: true,
+          name: true,
+          slug: true,
+          currency: true,
+          status: true,
+          createdAt: true,
+          deliveryMode: true,
+          preferredCourierId: true,
+          physicalAddress: true,
+          verifiedAt: true,
+        },
         with: { preferredCourier: { columns: { name: true } } },
       },
       category: true,
@@ -509,6 +522,28 @@ function TrackRecord({ record, since }: { record: NonNullable<Route.ComponentPro
   );
 }
 
+/** Where a product can be seen or collected: its own locations, or else the store's address. */
+function ItemLocations({ product }: { product: LoadedProduct }) {
+  if (product.kind !== "product") return null;
+  const places = product.locations.length ? product.locations : product.store.physicalAddress ? [product.store.physicalAddress] : [];
+  if (!places.length) return null;
+  return (
+    <div className="grid gap-1 text-sm">
+      <p className="font-semibold">{places.length > 1 ? `Available at ${places.length} locations` : "Location"}</p>
+      <ul className="grid gap-1">
+        {places.map((p) => (
+          <li key={p} className="flex items-start gap-1.5 text-muted-foreground">
+            <MapPinIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p)}`} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline">
+              {p}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export default function ProductPage({ loaderData, actionData }: Route.ComponentProps) {
   const { product, related, isOwner, follow, booking, sale } = loaderData;
   const price = priceDisplay({ ...product, salePct: sale?.pct });
@@ -535,12 +570,15 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
 
       <div className="grid gap-8 md:grid-cols-2 lg:gap-12">
         <div className="grid gap-2">
-          <SafeImage
-            src={photo ?? product.imageUrl}
-            hidden={!photo && product.imageHidden}
-            alt={product.title}
-            className="aspect-square rounded-2xl border"
-          />
+          <div className="relative">
+            <SafeImage
+              src={photo ?? product.imageUrl}
+              hidden={!photo && product.imageHidden}
+              alt={product.title}
+              className="aspect-square rounded-2xl border"
+            />
+            {product.store.verifiedAt ? <VerifiedTick className="absolute top-3 right-3 size-10" /> : null}
+          </div>
           {photos.length > 1 ? (
             <div className="scrollbar-none flex gap-2 overflow-x-auto">
               {photos.map((url) => (
@@ -583,6 +621,7 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
                 <FollowStoreButton storeId={product.store.id} storeName={product.store.name} follow={follow} className="h-8 px-3 text-xs" />
               ) : null}
             </div>
+            <ItemLocations product={product} />
           </div>
 
           {loaderData.property ? (

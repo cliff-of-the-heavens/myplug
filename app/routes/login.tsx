@@ -2,8 +2,8 @@ import { redirect, useSearchParams } from "react-router";
 import { LoginForm } from "~/components/auth-dialog";
 import { Logo } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
-import { createUserSession, getUser, safeRedirect, touchActivity, verifyLogin } from "~/lib/auth.server";
-import { restoreArchivedStore } from "~/lib/retention.server";
+import { getUser, verifyLogin } from "~/lib/auth.server";
+import { finishSignIn } from "~/lib/signin.server";
 import { str } from "~/lib/utils";
 import type { Route } from "./+types/login";
 
@@ -21,14 +21,7 @@ export async function action({ request }: Route.ActionArgs) {
   const user = await verifyLogin(email, password);
   if (!user) return { error: "Incorrect email or password." };
   if (user.status !== "active") return { error: "This account has been suspended. Contact support." };
-  await touchActivity(user.id);
-  // A merchant coming back to an inactive (archived) store gets it back straight away.
-  if (user.role === "merchant") await restoreArchivedStore(user.id);
-
-  // Merchants and admins land on their dashboards unless they were heading somewhere specific.
-  const home = { merchant: "/sell", admin: "/admin", courier: "/courier", customer: "/" }[user.role];
-  const target = safeRedirect(form.get("redirectTo"), home);
-  return createUserSession(request, user.id, target === "/" ? home : target);
+  return finishSignIn(request, user, form.get("redirectTo"));
 }
 
 export default function Login() {
@@ -42,7 +35,7 @@ export default function Login() {
           <CardDescription>Sign in to order, chat with merchants and track deliveries.</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoginForm redirectTo={params.get("redirectTo") ?? ""} />
+          <LoginForm redirectTo={params.get("redirectTo") ?? ""} initialError={params.get("error")} />
         </CardContent>
       </Card>
     </div>

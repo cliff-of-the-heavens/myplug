@@ -1,5 +1,5 @@
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
-import { ExternalLinkIcon, StoreIcon } from "lucide-react";
+import { BadgeCheckIcon, CheckIcon, ExternalLinkIcon, StoreIcon, XIcon } from "lucide-react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { AccountActions, StoreStatusBadge } from "~/components/account-actions";
 import { EmptyState, PageHeader } from "~/components/page";
@@ -13,7 +13,8 @@ import { qualified } from "~/db/sql";
 import { storeStatus, type StoreStatus } from "~/db/schema";
 import { handleAccountAction, likeTerm } from "~/lib/admin.server";
 import { requireAdmin } from "~/lib/auth.server";
-import { LicenseError, reviewLicense } from "~/lib/business.server";
+import { LicenseError, reviewLicense, setStoreVerified, verifiedStoreIds } from "~/lib/business.server";
+import { verificationChecklist } from "~/lib/verification";
 import { today } from "~/lib/dates";
 import { CURRENCIES, date, isCurrency } from "~/lib/format";
 import { cn, isUuid, str } from "~/lib/utils";
@@ -37,6 +38,9 @@ export async function loader({ request }: Route.LoaderArgs) {
       isTradesperson: stores.isTradesperson,
       trades: stores.trades,
       serviceArea: stores.serviceArea,
+      physicalAddress: stores.physicalAddress,
+      verifiedAt: stores.verifiedAt,
+      verifiedNote: stores.verifiedNote,
       currency: stores.currency,
       listingBandId: stores.listingBandId,
       bandPaidUntil: stores.bandPaidUntil,
@@ -73,7 +77,15 @@ export async function loader({ request }: Route.LoaderArgs) {
         columns: { documentKey: false },
       })
     : [];
-  return { merchants, licenses, filter, q, today: today(), bands: await listBands() };
+  const current = await verifiedStoreIds(merchants.map((m) => m.storeId));
+  return {
+    merchants: merchants.map((m) => ({ ...m, checklist: verificationChecklist({ ...m, primaryDocumentCurrent: current.has(m.storeId) }) })),
+    licenses,
+    filter,
+    q,
+    today: today(),
+    bands: await listBands(),
+  };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -98,6 +110,18 @@ export async function action({ request }: Route.ActionArgs) {
     if (!isUuid(storeId) || !isCurrency(currency)) return { error: "Choose a currency." };
     await db.update(schema.stores).set({ currency }).where(eq(schema.stores.id, storeId));
     return { ok: `Currency set to ${currency}. The store's prices keep their numbers, now shown in ${currency}.` };
+  }
+  if (form.get("intent") === "verify-store") {
+    const storeId = str(form.get("storeId"));
+    if (!isUuid(storeId)) return { error: "Store not found." };
+    const verified = form.get("verified") === "1";
+    try {
+      await setStoreVerified(storeId, verified, str(form.get("note")).slice(0, 300));
+    } catch (e) {
+      if (e instanceof LicenseError) return { error: e.message };
+      throw e;
+    }
+    return { ok: verified ? "Marked as a Verified merchant. Their listings now show a green tick." : "Verified mark removed." };
   }
   if (form.get("intent") === "license") {
     const id = str(form.get("licenseId"));
@@ -150,6 +174,42 @@ function LicenseList({ licenses, today }: { licenses: Route.ComponentProps["load
         );
       })}
     </ul>
+  );
+}
+
+/** The checklist behind the "Verified merchant" mark, and the button to give or remove it. */
+function VerifyStore({ merchant: m }: { merchant: Route.ComponentProps["loaderData"]["merchants"][number] }) {
+  const busy = useNavigation().state !== "idle";
+  const ready = m.checklist.every((c) => !c.required || c.done);
+  return (
+    <div className="grid gap-2 rounded-lg border p-3 text-sm">
+      <p className="font-semibold">Verified merchant check</p>
+      <ul className="grid gap-1 text-xs">
+        {m.checklist.map((c) => (
+          <li key={c.key} className="flex items-center gap-1.5">
+            {c.done ? <CheckIcon className="size-4 text-success" /> : <XIcon className="size-4 text-destructive" />}
+            {c.label}
+            {c.required ? <span className="text-muted-foreground">(required)</span> : null}
+          </li>
+        ))}
+      </ul>
+      {m.physicalAddress ? <p className="text-xs">Address: {m.physicalAddress}</p> : null}
+      {m.verifiedAt ? <p className="text-xs text-muted-foreground">Verified {date(m.verifiedAt)}{m.verifiedNote ? `: ${m.verifiedNote}` : ""}</p> : null}
+      <Form method="post" className="flex flex-wrap items-center gap-2">
+        <input type="hidden" name="intent" value="verify-store" />
+        <input type="hidden" name="storeId" value={m.storeId} />
+        <Input name="note" placeholder={m.verifiedAt ? "Reason (told to the merchant)" : "What you checked, e.g. visited the shop"} className="h-8 min-w-48 flex-1 text-xs" />
+        {m.verifiedAt ? (
+          <Button type="submit" name="verified" value="0" size="sm" variant="ghost" disabled={busy}>
+            Remove verification
+          </Button>
+        ) : (
+          <Button type="submit" name="verified" value="1" size="sm" variant="accent" disabled={busy || !ready}>
+            <BadgeCheckIcon /> Mark as verified
+          </Button>
+        )}
+      </Form>
+    </div>
   );
 }
 
@@ -207,6 +267,11 @@ export default function AdminMerchants({ loaderData, actionData }: Route.Compone
                     </Link>
                     <StoreStatusBadge status={m.storeStatus} />
                     {m.isTradesperson ? <Badge variant="accent">Handyman</Badge> : null}
+                    {m.verifiedAt ? (
+                      <Badge variant="success">
+                        <BadgeCheckIcon /> Verified merchant
+                      </Badge>
+                    ) : null}
                     {m.userStatus === "suspended" && m.storeStatus !== "suspended" ? <Badge variant="destructive">Account suspended</Badge> : null}
                   </div>
                   <p className="text-sm">
@@ -260,6 +325,7 @@ export default function AdminMerchants({ loaderData, actionData }: Route.Compone
                     {m.bandPaidUntil ? <span className="text-xs text-muted-foreground">paid until {date(m.bandPaidUntil)}</span> : null}
                   </Form>
                   <LicenseList licenses={licenses.filter((l) => l.storeId === m.storeId)} today={loaderData.today} />
+                  <VerifyStore merchant={m} />
                   <div className="flex gap-3 text-sm">
                     <Link to={`/admin/users/${m.userId}`} className="font-semibold text-primary hover:underline">Details</Link>
                     <Link to={`/s/${m.slug}`} className="flex items-center gap-1 font-semibold text-accent hover:underline">

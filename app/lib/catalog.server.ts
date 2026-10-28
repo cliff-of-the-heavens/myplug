@@ -85,6 +85,7 @@ const cardColumns = {
   storeSlug: stores.slug,
   currency: stores.currency,
   isTradesperson: stores.isTradesperson,
+  storeVerified: sql<boolean>`${stores.verifiedAt} is not null`, // the admin's "Verified merchant" mark
   ...voteColumns(stores.id, stores.isTradesperson),
   promoWeight: activePromo.weight,
   // Real estate

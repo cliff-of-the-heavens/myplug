@@ -20,7 +20,7 @@ export const meta: Route.MetaFunction = () => [{ title: "Business information ·
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireMerchantAccount(request);
   const [store, licenses, verified] = await Promise.all([
-    db.query.stores.findFirst({ where: eq(schema.stores.id, user.storeId), columns: { registrationNumber: true, status: true, isTradesperson: true } }),
+    db.query.stores.findFirst({ where: eq(schema.stores.id, user.storeId), columns: { registrationNumber: true, status: true, isTradesperson: true, physicalAddress: true, verifiedAt: true } }),
     storeLicenses(user.storeId),
     verifiedStoreIds([user.storeId]),
   ]);
@@ -41,8 +41,9 @@ export async function action({ request }: Route.ActionArgs) {
       const number = str(form.get("registrationNumber")).slice(0, 60);
       // Tradespeople may not be registered businesses, so they can clear it.
       if (number.length < 3 && !user.isTradesperson) return { error: "Enter your business registration number." };
-      await db.update(schema.stores).set({ registrationNumber: number || null }).where(eq(schema.stores.id, user.storeId));
-      return { ok: "Registration number saved." };
+      const physicalAddress = str(form.get("physicalAddress")).slice(0, 300);
+      await db.update(schema.stores).set({ registrationNumber: number || null, physicalAddress: physicalAddress || null }).where(eq(schema.stores.id, user.storeId));
+      return { ok: "Saved." };
     }
     if (intent === "delete") {
       await deleteLicense(user.storeId, str(form.get("id")));
@@ -99,17 +100,33 @@ export default function Business({ loaderData, actionData }: Route.ComponentProp
           )
         }
       />
+      {store.verifiedAt ? (
+        <p className="mb-4 flex items-center gap-2 rounded-lg bg-success/15 px-3 py-2 text-sm font-semibold text-success">
+          <BadgeCheckIcon className="size-5" /> Verified merchant: your listings show a green tick.
+        </p>
+      ) : (
+        <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm">
+          <strong>Get the Verified merchant tick.</strong> Give your registration number and physical address, and upload your{" "}
+          {trade ? "national ID" : "registration certificate"} below. Once an admin has checked them, your listings show a green tick.
+        </p>
+      )}
       {actionData && "ok" in actionData ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 
       <Card className="mb-6">
         <CardContent className="pt-5">
-          <Form method="post" className="flex flex-wrap items-end gap-2">
+          <Form method="post" className="grid gap-3 sm:grid-cols-2">
             <input type="hidden" name="intent" value="registration" />
-            <Field label={trade ? "Business registration number (optional)" : "Business registration number"} className="flex-1">
+            <Field label={trade ? "Business registration number (optional)" : "Business registration number"}>
               <Input name="registrationNumber" defaultValue={store.registrationNumber ?? ""} required={!trade} minLength={trade ? undefined : 3} />
             </Field>
-            <Button type="submit" disabled={busy}>Save</Button>
+            <Field
+              label={trade ? "Workshop address (optional)" : "Physical address"}
+              hint={trade ? undefined : "Your shop, office or warehouse. Your items are shown here unless you give them another location."}
+            >
+              <Input name="physicalAddress" defaultValue={store.physicalAddress ?? ""} placeholder="e.g. Shop 12, Old Town Mall, Lilongwe" />
+            </Field>
+            <Button type="submit" disabled={busy} className="justify-self-start">Save</Button>
           </Form>
         </CardContent>
       </Card>

@@ -29,7 +29,10 @@ favourites.
 
 ### Signing in and out
 
-- **Sign in** opens a pop-up. Enter your email and password.
+- **Sign in** opens a pop-up. Enter your email and password, or tap **Continue with Google** / **Continue
+  with Facebook** (when MyPlug has switched them on). If that account's email already has a MyPlug account,
+  you're signed straight in. If you're new, you finish on the sign-up form (choose your account type, accept
+  the terms) without making a password. You can add a password later with **Forgot password**.
 - **Sign out**: open the account menu (your initial, top right) and choose **Sign out**.
 - The account menu shows your email and account type.
 
@@ -200,6 +203,10 @@ banner strips, search banners and side banners. It starts once an admin confirms
 3. Wait for an admin to approve the store. Until then your store is hidden.
 4. Once your primary licence is verified, customers see a green **Registered business** badge. It
    disappears automatically if the licence expires; upload the renewed one.
+5. **Verified merchant:** also give your **physical address** (shop, office or warehouse) under **Business
+   info** and a phone number on your account. An admin checks your details and can then mark you as a
+   **Verified merchant**: a green tick appears in the corner of all your listings and a "Verified merchant"
+   badge on your store.
 
 ### Joining as a handyman
 
@@ -247,6 +254,10 @@ plan: existing listings stay, but you can't add more beyond the free limit. Arch
 | **Real Estate** | See below |
 
 **Photos:** one main photo plus extra photos (the number is set by MyPlug). Drag and drop several at once.
+
+**Item location:** products are shown at your business address (from **Business info**) unless you choose
+**Somewhere else** and list one or more places, e.g. two branches. Locations appear only on the item's own
+page, with a map link, not in search results.
 
 **Stock:** *I count my stock* (shows how many are left, sells out at 0) or *Always in stock* (continuous
 supply). If you count stock, you can tick **Archive when sold out**: the listing is hidden at zero and
@@ -367,6 +378,10 @@ waiting for you.
 - **Merchants:** approve or reject applications (a reason is required), suspend and reactivate, set each
   store's **currency** and **plan**, open business documents, **verify** or reject them, and choose which
   documents customers may see.
+- **Verified merchant:** each merchant shows a checklist (primary document verified and in date,
+  registration number, physical address, phone). Once the document is verified you can **Mark as
+  verified**, with a note of what you checked (e.g. visited the shop). The merchant is told, and their
+  listings get a green tick. **Remove verification** takes it away (give a reason; they're told).
 - **Handymen** appear among merchants with a **Handyman** tag, their trades and area. Verify their national
   ID (their primary document) before approving; never mark an ID as shown to customers.
 - **Couriers:** compare the face photo with the ID document, then approve, reject or suspend.

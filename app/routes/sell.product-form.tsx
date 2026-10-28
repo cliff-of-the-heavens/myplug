@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertFields } from "~/components/alert-composer";
 import { DigitalFields } from "~/components/digital-fields";
 import { GalleryField } from "~/components/gallery-field";
+import { LocationFields } from "~/components/location-fields";
 import { ImageDropzone } from "~/components/image-dropzone";
 import { FormError, PageHeader } from "~/components/page";
 import { Button } from "~/components/ui/button";
@@ -21,6 +22,7 @@ import { ALERT_NAME } from "~/lib/alerts";
 import { AlertError, getQuota, sendAlert, subscriberCounts } from "~/lib/alerts.server";
 import { redirectWithFlash, requireMerchant } from "~/lib/auth.server";
 import { currencySymbol, parseMoney } from "~/lib/format";
+import { parseLocations } from "~/lib/locations";
 import { getStorageSettings, isOwnUpload, resolveBackend } from "~/lib/storage.server";
 import { uploadImage, UploadError } from "~/lib/upload.server";
 import { capitalize, cn, str } from "~/lib/utils";
@@ -59,8 +61,22 @@ export async function loader({ request, params }: Route.LoaderArgs) {
   const directUploads = resolveBackend(backend) === "blob";
   // Never send the private file's storage key to the browser.
   const safeProduct = product ? { ...product, mediaKey: undefined, hasMedia: !!product.mediaKey } : null;
-  const [photoLimit, plan] = await Promise.all([maxPhotos(), storePlan(user.storeId)]);
-  return { product: safeProduct, kind, currency: user.storeCurrency, quota, counts, directUploads, photoLimit, plan: { name: plan.band?.name ?? "", used: plan.used, limit: plan.limit } };
+  const [photoLimit, plan, store] = await Promise.all([
+    maxPhotos(),
+    storePlan(user.storeId),
+    db.query.stores.findFirst({ where: eq(schema.stores.id, user.storeId), columns: { physicalAddress: true } }),
+  ]);
+  return {
+    product: safeProduct,
+    kind,
+    currency: user.storeCurrency,
+    quota,
+    counts,
+    directUploads,
+    photoLimit,
+    plan: { name: plan.band?.name ?? "", used: plan.used, limit: plan.limit },
+    storeAddress: store?.physicalAddress ?? null,
+  };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
@@ -200,6 +216,8 @@ export async function action({ request, params }: Route.ActionArgs) {
     autoDetails,
     dailyCapacity,
     references: kind === "service" ? str(form.get("references")).slice(0, 3000) || null : null,
+    // Physical products: empty means "at the store's address"
+    locations: kind === "product" ? parseLocations(form.getAll("locations")) : [],
     isActive: form.get("isActive") === "on",
     // A new image replaces the old one and clears any moderation hide
     ...(imageUrl ? { imageUrl, imageHidden: false } : {}),
@@ -444,6 +462,7 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
                 ) : null}
               </fieldset>
               )}
+              {kind === "product" ? <LocationFields initial={product?.locations ?? []} storeAddress={loaderData.storeAddress} /> : null}
               {!isProperty ? (
                 <Field label={isService ? "Portfolio: photos of your work" : "More photos"} hint={`Up to ${loaderData.photoLimit}. Drag & drop several at once.`}>
                   <GalleryField initial={product?.images.map((i) => i.url) ?? []} max={loaderData.photoLimit} />

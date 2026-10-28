@@ -22,6 +22,7 @@ import { getCategories } from "./lib/catalog.server";
 import { unreadCount } from "./lib/messaging.server";
 import { ICON_VERSION, iconUrl } from "./lib/brand";
 import { unreadNotifications } from "./lib/notify.server";
+import { enabledProviders } from "./lib/oauth.server";
 import { cartCount, favouriteIds } from "./lib/shopping.server";
 import { TERMS_VERSION } from "./lib/terms";
 import { TermsGate } from "./components/terms-gate";
@@ -51,7 +52,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     user?.role === "customer" ? await Promise.all([favouriteIds(user.id), cartCount(user.id)]) : [{ products: [], stores: [] }, 0];
   // Everyone must accept the current Terms of Use (new users at sign-up, existing users once).
   const needsTerms = !!user && user.termsVersion !== TERMS_VERSION;
-  return { user, categories, unread, notices, needsTerms, saved, cart, analytics };
+  // "Continue with Google/Facebook" buttons, for the providers whose app keys are set
+  const socialProviders = user ? [] : enabledProviders();
+  return { user, categories, unread, notices, needsTerms, saved, cart, analytics, socialProviders };
 }
 
 // Don't refetch categories/user on every form submission unless it could have changed.

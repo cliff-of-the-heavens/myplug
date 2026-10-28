@@ -26,7 +26,7 @@ export async function verifiedStoreIds(storeIds: string[]) {
 /** What customers may see about a business: registration number, badge, and the licences the admin chose to show. */
 export async function publicBusinessInfo(storeId: string) {
   const [store, licenses, verified] = await Promise.all([
-    db.query.stores.findFirst({ where: eq(stores.id, storeId), columns: { registrationNumber: true, isTradesperson: true } }),
+    db.query.stores.findFirst({ where: eq(stores.id, storeId), columns: { registrationNumber: true, isTradesperson: true, verifiedAt: true } }),
     db.query.businessLicenses.findMany({
       where: and(eq(businessLicenses.storeId, storeId), eq(businessLicenses.showToCustomers, true), current()),
       orderBy: [asc(businessLicenses.kind), asc(businessLicenses.name)],
@@ -37,6 +37,7 @@ export async function publicBusinessInfo(storeId: string) {
   const tradesperson = store?.isTradesperson ?? false;
   return {
     verified: verified.has(storeId),
+    merchantVerified: !!store?.verifiedAt, // the admin's "Verified merchant" mark
     tradesperson,
     registrationNumber: store?.registrationNumber ?? null,
     licenses: licenses
@@ -84,6 +85,26 @@ export async function deleteLicense(storeId: string, id: string) {
 }
 
 /** Admin vets a licence and decides whether customers can see it. */
+/** An admin marks a store as a verified merchant (or takes the mark away). */
+export async function setStoreVerified(storeId: string, verified: boolean, note: string) {
+  const store = await db.query.stores.findFirst({ where: eq(stores.id, storeId), columns: { ownerId: true, verifiedAt: true } });
+  if (!store) throw new LicenseError("Store not found.");
+  if (verified && !(await verifiedStoreIds([storeId])).has(storeId)) {
+    throw new LicenseError("Verify the store's primary document (registration certificate, or a handyman's national ID) first.");
+  }
+  await db
+    .update(stores)
+    .set({ verifiedAt: verified ? (store.verifiedAt ?? new Date()) : null, verifiedNote: note || null })
+    .where(eq(stores.id, storeId));
+  await notify(
+    [store.ownerId],
+    verified
+      ? { title: "Your store is now a Verified merchant", body: "Customers see a green tick on your listings.", href: "/sell/business" }
+      : { title: "Your Verified merchant mark was removed", body: note || undefined, href: "/sell/business" },
+    { email: true },
+  );
+}
+
 export async function reviewLicense(id: string, action: "verify" | "reject" | "show" | "hide", note: string) {
   const lic = await db.query.businessLicenses.findFirst({ where: eq(businessLicenses.id, id), with: { store: { columns: { ownerId: true } } } });
   if (!lic) throw new LicenseError("Licence not found.");

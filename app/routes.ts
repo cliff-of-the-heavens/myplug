@@ -23,6 +23,8 @@ export default [
   route("reset-password", "routes/reset-password.tsx"),
   route("account/password", "routes/account.password.tsx"),
   route("logout", "routes/logout.tsx"),
+  route("auth/:provider", "routes/auth.provider.ts"),
+  route("auth/:provider/callback", "routes/auth.callback.ts"),
 
   // Customer
   route("account/orders", "routes/account.orders.tsx"),

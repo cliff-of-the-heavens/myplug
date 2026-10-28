@@ -46,7 +46,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     getFollowState(user, store.id),
     publicBusinessInfo(store.id),
   ]);
-  const { reviewNote, alertsBlocked, ...publicStore } = store; // admin-only fields stay on the server
+  const { reviewNote, alertsBlocked, verifiedNote, ...publicStore } = store; // admin-only fields stay on the server
   const sales = (await liveSalesFor(store.id)).map((d) => ({ id: d.id, name: d.name, percentOff: d.percentOff, allProducts: d.allProducts, endsAt: d.endsAt }));
   const [ratings, reviewList, handyman] = await Promise.all([
     ratingSummary("store", store.id),
@@ -130,6 +130,11 @@ export default function StorePage({ loaderData }: Route.ComponentProps) {
         </div>
         <TrackView storeId={store.id} />
         {store.description ? <p className="max-w-3xl text-muted-foreground">{store.description}</p> : null}
+        {store.physicalAddress && !handyman ? (
+          <p className="flex items-center gap-1.5 text-sm">
+            <MapPinIcon className="size-4 text-primary" /> {store.physicalAddress}
+          </p>
+        ) : null}
         {handyman ? (
           <div className="grid gap-4 rounded-2xl border bg-card p-4 md:p-5">
             <div className="flex flex-wrap gap-2">

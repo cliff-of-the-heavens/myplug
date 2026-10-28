@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { redirect, useSearchParams } from "react-router";
 import { z } from "zod";
@@ -5,7 +6,7 @@ import { RegisterForm, toRole } from "~/components/auth-dialog";
 import { Logo } from "~/components/site-header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { db, schema } from "~/db/client.server";
-import { createUserSession, getUser, hashPassword, safeRedirect } from "~/lib/auth.server";
+import { clearSocialPending, createUserSession, getSocialPending, getUser, hashPassword, safeRedirect } from "~/lib/auth.server";
 import { getCategories } from "~/lib/catalog.server";
 import { HANDYMAN_GROUP } from "~/lib/handyman";
 import { TERMS_VERSION } from "~/lib/terms";
@@ -57,13 +58,23 @@ const Schema = z
 
 export async function loader({ request }: Route.LoaderArgs) {
   if (await getUser(request)) throw redirect("/");
-  return null;
+  // Back from Google/Facebook as someone new: finish signing up with that account.
+  const pending = await getSocialPending(request);
+  return { social: pending ? { provider: pending.provider, email: pending.email, name: pending.name } : null };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const data = await request.formData();
+  if (data.get("intent") === "forget-social") return clearSocialPending(request, "/register");
   const form = Object.fromEntries(data);
-  const parsed = Schema.safeParse({ ...form, trades: data.getAll("trades").map(String) });
+  // Google/Facebook sign-ups have no password (they can set one later with "Forgot password"),
+  // and keep the email the provider gave.
+  const social = await getSocialPending(request);
+  const parsed = Schema.safeParse({
+    ...form,
+    ...(social ? { password: randomBytes(24).toString("base64url"), email: social.email ?? form.email } : {}),
+    trades: data.getAll("trades").map(String),
+  });
   if (!parsed.success) {
     return { errors: z.flattenError(parsed.error).fieldErrors as Record<string, string[] | undefined> };
   }
@@ -72,7 +83,9 @@ export async function action({ request }: Route.ActionArgs) {
   const tradeSlugs = new Set((await getCategories()).filter((c) => c.group === HANDYMAN_GROUP).map((c) => c.slug));
 
   const existing = await db.query.users.findFirst({ where: eq(schema.users.email, v.email) });
-  if (existing) return { errors: { email: ["An account with this email already exists"] } };
+  if (existing) {
+    return { errors: { email: [social ? "An account with this email already exists. Sign in with your password, then you can use this too." : "An account with this email already exists"] } };
+  }
 
   const user = await db.transaction(async (tx) => {
     const [user] = await tx
@@ -87,6 +100,9 @@ export async function action({ request }: Route.ActionArgs) {
         termsAcceptedAt: new Date(),
       })
       .returning();
+    if (social) {
+      await tx.insert(schema.userIdentities).values({ userId: user.id, provider: social.provider, providerUserId: social.id, email: social.email });
+    }
 
     if (v.role === "courier") {
       // Identity documents are added next, on the courier profile page; an admin then approves the account.
@@ -122,7 +138,7 @@ export async function action({ request }: Route.ActionArgs) {
   return createUserSession(request, user.id, safeRedirect(form.redirectTo as string, "/"));
 }
 
-export default function Register() {
+export default function Register({ loaderData }: Route.ComponentProps) {
   const [params] = useSearchParams();
   return (
     <div className="grid place-items-center px-4 py-10">
@@ -136,6 +152,7 @@ export default function Register() {
           <RegisterForm
             redirectTo={params.get("redirectTo") ?? ""}
             defaultRole={toRole(params.get("role"))}
+            social={loaderData.social}
           />
         </CardContent>
       </Card>

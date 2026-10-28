@@ -58,6 +58,13 @@ In **Settings → Environment Variables**, add these for **Production** (and Pre
 | `RESEND_API_KEY` | From Resend → API Keys | For email |
 | `EMAIL_FROM` | e.g. `MyPlug <no-reply@yourdomain.com>`, on a domain verified in Resend | For email |
 | `REPORT_AUTO_HIDE_THRESHOLD` | Reports that auto-hide an image (default 3) | No |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google Cloud Console → APIs & Services → Credentials → OAuth client ID (Web application) | For "Continue with Google" |
+| `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET` | developers.facebook.com → your app → Facebook Login (with the `email` permission) | For "Continue with Facebook" |
+
+**Google and Facebook sign-in:** each button only appears once its keys are set. In each provider's settings,
+add the redirect address `https://<your site>/auth/google/callback` (Google: *Authorised redirect URIs*) and
+`https://<your site>/auth/facebook/callback` (Facebook: *Valid OAuth Redirect URIs*). They must match `APP_URL`
+exactly. A Facebook app must be switched to **Live** before people outside your team can use it.
 
 Without `RESEND_API_KEY`, no email is sent at all: password reset, order notices and alerts only appear in
 the logs.

@@ -85,6 +85,13 @@
       "when": 1793193502140,
       "tag": "0011_handymen",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793197126419,
+      "tag": "0012_verified_locations_social",
+      "breakpoints": true
     }
   ]
 }

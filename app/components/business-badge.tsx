@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 
 export type BusinessInfo = {
   verified: boolean;
+  merchantVerified?: boolean; // an admin checked the registration, premises and contacts
   tradesperson?: boolean; // a handyman: the primary document is a national ID, not a business registration
   registrationNumber: string | null;
   licenses: { id: string; kind: "primary" | "other"; name: string; number: string | null; issuer: string | null; issuedOn: string | null; expiresOn: string | null; hasDocument: boolean }[];
@@ -14,7 +15,17 @@ const d = (s: string) => formatDay(s, { day: "numeric", month: "short", year: "n
 
 /** Green "Registered business" badge (or a neutral "Business info" link) that opens the business details. */
 export function BusinessBadge({ storeName, info, className }: { storeName: string; info: BusinessInfo; className?: string }) {
-  const label = info.tradesperson ? (info.verified ? "ID verified" : "ID not verified") : info.verified ? "Registered business" : "Business info";
+  const label = info.merchantVerified
+    ? info.tradesperson
+      ? "Verified handyman"
+      : "Verified merchant"
+    : info.tradesperson
+      ? info.verified
+        ? "ID verified"
+        : "ID not verified"
+      : info.verified
+        ? "Registered business"
+        : "Business info";
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -22,21 +33,23 @@ export function BusinessBadge({ storeName, info, className }: { storeName: strin
           type="button"
           className={cn(
             "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold",
-            info.verified ? "bg-success/15 text-success hover:bg-success/25" : "bg-muted text-muted-foreground hover:bg-muted/70",
+            info.verified || info.merchantVerified ? "bg-success/15 text-success hover:bg-success/25" : "bg-muted text-muted-foreground hover:bg-muted/70",
             className,
           )}
         >
-          {info.verified ? <BadgeCheckIcon className="size-4" /> : <InfoIcon className="size-3.5" />}
+          {info.verified || info.merchantVerified ? <BadgeCheckIcon className="size-4" /> : <InfoIcon className="size-3.5" />}
           {label}
         </button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {info.verified ? <BadgeCheckIcon className="size-6 text-success" /> : null} {storeName}
+            {info.verified || info.merchantVerified ? <BadgeCheckIcon className="size-6 text-success" /> : null} {storeName}
           </DialogTitle>
           <DialogDescription>
-            {info.tradesperson
+            {info.merchantVerified
+              ? `MyPlug has checked this ${info.tradesperson ? "handyman's ID and contact details" : "business's registration document, physical address and contact details"}. It isn't a guarantee, but it means they are who they say they are.`
+              : info.tradesperson
               ? info.verified
                 ? "MyPlug has checked this tradesperson's national ID. The ID itself is never shown publicly."
                 : "MyPlug hasn't checked this tradesperson's ID yet. Take extra care."

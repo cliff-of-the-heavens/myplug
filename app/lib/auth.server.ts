@@ -3,14 +3,22 @@ import { eq } from "drizzle-orm";
 import { createCookieSessionStorage, redirect } from "react-router";
 import { db, schema } from "~/db/client.server";
 import type { StoreStatus, User } from "~/db/schema";
+import type { PendingSocial, ProviderId } from "./oauth";
 
 const secret = process.env.SESSION_SECRET;
 if (!secret || secret.length < 32) {
   throw new Error("SESSION_SECRET must be set and at least 32 characters long.");
 }
 
+/** A Google/Facebook sign-in in progress: checked when the provider sends the person back. */
+type OAuthState = { state: string; provider: ProviderId; role: string; redirectTo: string; devEmail?: string };
+
 // issuedAt: when this sign-in happened, so changing the password can sign out older sessions.
-const sessionStorage = createCookieSessionStorage<{ userId: string; issuedAt: number }, { flash: string }>({
+// socialPending: a new Google/Facebook user who still has to finish signing up.
+const sessionStorage = createCookieSessionStorage<
+  { userId: string; issuedAt: number; oauth: OAuthState; socialPending: PendingSocial },
+  { flash: string }
+>({
   cookie: {
     name: "__myplug",
     httpOnly: true,
@@ -144,6 +152,8 @@ export async function createUserSession(request: Request, userId: string, redire
   const session = await getSession(request);
   session.set("userId", userId);
   session.set("issuedAt", Date.now());
+  session.unset("oauth");
+  session.unset("socialPending");
   return redirect(safeRedirect(redirectTo), {
     headers: { "Set-Cookie": await sessionStorage.commitSession(session) },
   });
@@ -198,4 +208,40 @@ export function safeRedirect(to: FormDataEntryValue | string | null | undefined,
 export async function sessionUserId(request: Request) {
   const session = await getSession(request);
   return session.get("userId") ?? null;
+}
+
+// ---------------------------------------------------------------- Google / Facebook sign-in
+
+/** Remembers a sign-in that's on its way to Google/Facebook, then sends the person there. */
+export async function startOAuth(request: Request, oauth: OAuthState, to: string) {
+  const session = await getSession(request);
+  session.set("oauth", oauth);
+  return redirect(to, { headers: { "Set-Cookie": await sessionStorage.commitSession(session) } });
+}
+
+/** The sign-in started here (and only once: it's cleared as it's read). */
+export async function takeOAuthState(request: Request) {
+  const session = await getSession(request);
+  const oauth = session.get("oauth") ?? null;
+  session.unset("oauth");
+  return { oauth, cookie: await sessionStorage.commitSession(session) };
+}
+
+/** Sends a new Google/Facebook user to the sign-up form to finish (role, terms, store details). */
+export async function startSocialSignup(request: Request, pending: PendingSocial, to: string) {
+  const session = await getSession(request);
+  session.unset("oauth");
+  session.set("socialPending", pending);
+  return redirect(to, { headers: { "Set-Cookie": await sessionStorage.commitSession(session) } });
+}
+
+export async function getSocialPending(request: Request) {
+  return (await getSession(request)).get("socialPending") ?? null;
+}
+
+/** "Not you?" on the sign-up form: forget the Google/Facebook account. */
+export async function clearSocialPending(request: Request, to: string) {
+  const session = await getSession(request);
+  session.unset("socialPending");
+  return redirect(to, { headers: { "Set-Cookie": await sessionStorage.commitSession(session) } });
 }
