@@ -165,6 +165,41 @@ async function main() {
     });
   }
 
+  console.log("Seeding a handyman...");
+  const [fixitOwner] = await db
+    .insert(schema.users)
+    .values({ email: "fixit@demo.myplug", name: "Blessings Phiri", role: "merchant", phone: "+265 99 555 0202", passwordHash: hash })
+    .returning();
+  const [fixitStore] = await db
+    .insert(schema.stores)
+    .values({
+      ownerId: fixitOwner.id,
+      name: "Phiri Fix-It Electronics",
+      slug: "phiri-fixit",
+      status: "approved",
+      description: "Fridges, TVs, phones and solar inverters repaired at your home.",
+      isTradesperson: true,
+      trades: ["electronics-repair", "electrical"],
+      serviceArea: "Lilongwe: Area 47, Area 49 and Kanengo",
+      workReferences: "Rewired Kumbali Lodge staff houses (2025)",
+    })
+    .returning();
+  for (const [title, cat, price] of [
+    ["Fridge & freezer repair (call-out)", "electronics-repair", 1500000],
+    ["House wiring & fault finding", "electrical", 2500000],
+  ] as const) {
+    await db.insert(schema.products).values({
+      storeId: fixitStore.id,
+      categoryId: serviceCats[cat],
+      title,
+      priceCents: price,
+      kind: "service",
+      dailyCapacity: 3,
+      trackStock: false,
+      imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title)}/600/600`,
+    });
+  }
+
   console.log("Seeding a courier...");
   const [courierUser] = await db
     .insert(schema.users)

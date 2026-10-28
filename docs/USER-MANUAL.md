@@ -20,6 +20,7 @@ car dealers and couriers in one place. This manual explains how to use it for ea
 | --- | --- | --- |
 | Customer | Buying, booking, making offers, requests | **Create account** (top right) |
 | Merchant | Selling products, services, downloads, property or vehicles | **Sell on MyPlug**; an admin approves the store before it goes live |
+| Handyman | Tradespeople who repair and fix things (electronics, carpentry, metal work, mechanics, plumbing, wiring, gardening, cleaning) | **Join as a handyman** (footer), or **Create account → I fix things**; an admin checks your ID first |
 | Courier | Delivering for stores and customers | **Create account → I deliver**; an admin checks your ID first |
 | Administrator | Running the platform | Created by the site owner with `npm run setup` |
 
@@ -59,10 +60,10 @@ your next visit.
 
 The coloured bar under the search box is the **main menu**:
 
-**All products · Services · Downloads · Real Estate**
+**All products · Auto · Services · Handymen · Downloads · Real Estate**
 
 Choose one and the browse page shows its **subcategories** as chips (e.g. under All products: Electronics,
-Fashion, Auto...). With nothing chosen, browsing shows **All products**. The search box searches everything.
+Fashion...; under Handymen: the trades, such as Plumbing or Electronics repair). With nothing chosen, browsing shows **All products**. The search box searches everything.
 
 ---
 
@@ -157,6 +158,18 @@ Time limits start then. Online-only options play in the browser.
 Can't find something? **Requests → Post a request** with a photo and description. Merchants who can make or
 source it message you.
 
+### Hiring a handyman
+
+- **Post a job:** on the **Handymen** tab tap **Post a job** (or choose a trade on **Post a request**). Say
+  what needs doing and the area (not your full address), and add a photo if it helps. Every approved
+  handyman in that trade is told straight away and messages you with a quote.
+- **Browse profiles:** each handyman's profile shows their trades, where they work, photos of past work,
+  references, an **ID verified** badge once MyPlug has checked their national ID, and community votes.
+  Tap **Message** to ask a question, or book one of their listed services on a date.
+- **Vote and comment:** anyone signed in can vote a handyman **up or down** once (vote again to change it),
+  with an optional comment on the work. Accounts need to be a few days old to vote. Rude words are
+  masked, and comments that break the rules are taken down.
+
 ### Email alerts
 
 On a store or product page, tap **Get alerts** and choose *New arrivals*, *Back in stock* and/or
@@ -187,6 +200,23 @@ banner strips, search banners and side banners. It starts once an admin confirms
 3. Wait for an admin to approve the store. Until then your store is hidden.
 4. Once your primary licence is verified, customers see a green **Registered business** badge. It
    disappears automatically if the licence expires; upload the renewed one.
+
+### Joining as a handyman
+
+1. **Join as a handyman** (footer) or **Create account → I fix things**. Give your trading name (your own
+   name is fine), phone, your **trades** and **where you work**. A business registration number is optional.
+2. Under **ID & certificates**, upload your **national ID or passport** (the primary document). It's only
+   for MyPlug's check and is never shown to customers. Add trade certificates if you have them.
+3. Once an admin approves you, your profile goes live with a green **ID verified** badge.
+4. **Profile**: add a photo, describe your work, update your trades and area, and list **references** (past
+   clients customers can check). Add each service you offer as a listing (call-out fee, per job or per
+   metre) with photos of past work; the photos also make up the **Past work** gallery on your profile.
+5. **Jobs in my trades** lists open jobs customers posted in your trades; you're notified of each new one.
+   Open a job and reply to quote.
+6. **Reviews & votes** shows star reviews from bookings and the community's up/down votes. Reply publicly,
+   or ask an admin to check a comment that's fake or abusive.
+7. To get seen more, use **Advertise** (boost your listings on the Handymen tab, or book a banner) and pick a
+   bigger **Store plan** if you need more listings.
 
 ### Your dashboard
 
@@ -337,6 +367,8 @@ waiting for you.
 - **Merchants:** approve or reject applications (a reason is required), suspend and reactivate, set each
   store's **currency** and **plan**, open business documents, **verify** or reject them, and choose which
   documents customers may see.
+- **Handymen** appear among merchants with a **Handyman** tag, their trades and area. Verify their national
+  ID (their primary document) before approving; never mark an ID as shown to customers.
 - **Couriers:** compare the face photo with the ID document, then approve, reject or suspend.
 - **Customers:** search, see orders and unpaid bills, suspend and reactivate. **Details** shows everything
   about one account.
@@ -381,7 +413,8 @@ emails.
 - **Moderation:** reported images, listings and stores. Remove, restore, dismiss, or suspend the owner.
   Images reported by several people are hidden automatically until you decide.
 - **Reviews:** flagged reviews first. **Take down**, **Keep it up** or **Put back up**; everyone involved is
-  told. Edit the **obscene-word filter**: add local-language words to block, and words to allow.
+  told. The **Handyman comments** tab does the same for community votes on handymen; a taken-down
+  comment's vote stops counting. Edit the **obscene-word filter**: add local-language words to block, and words to allow.
 
 ### System settings
 

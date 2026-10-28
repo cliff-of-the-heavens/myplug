@@ -30,6 +30,7 @@ export type SessionUser = Pick<User, "id" | "email" | "name" | "role" | "status"
   termsVersion: string | null;
   storeCurrency: string | null;
   storeStatus: StoreStatus | null;
+  isTradesperson: boolean; // a handyman: their store is a tradesperson's profile
 };
 
 export function getSession(request: Request) {
@@ -63,7 +64,7 @@ export async function getUser(request: Request): Promise<SessionUser | null> {
     where: eq(schema.users.id, userId),
     columns: { id: true, email: true, name: true, role: true, status: true, lastActiveAt: true, termsVersion: true, passwordChangedAt: true },
     with: {
-      store: { columns: { id: true, slug: true, currency: true, status: true } },
+      store: { columns: { id: true, slug: true, currency: true, status: true, isTradesperson: true } },
       courier: { columns: { id: true, status: true } },
     },
   });
@@ -81,6 +82,7 @@ export async function getUser(request: Request): Promise<SessionUser | null> {
     storeSlug: store?.slug ?? null,
     storeCurrency: store?.currency ?? null,
     storeStatus: store?.status ?? null,
+    isTradesperson: store?.isTradesperson ?? false,
     courierId: courier?.id ?? null,
     courierStatus: courier?.status ?? null,
   };

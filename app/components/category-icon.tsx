@@ -1,4 +1,5 @@
 import {
+  AnvilIcon,
   BabyIcon,
   Building2Icon,
   HouseIcon,
@@ -7,6 +8,13 @@ import {
   CakeIcon,
   CameraIcon,
   ChefHatIcon,
+  CpuIcon,
+  HammerIcon,
+  ShovelIcon,
+  ShowerHeadIcon,
+  SprayCanIcon,
+  WrenchIcon,
+  ZapIcon,
   Music2Icon,
   PartyPopperIcon,
   BookOpenIcon,
@@ -44,6 +52,14 @@ const ICONS: Record<string, LucideIcon> = {
   cake: CakeIcon,
   camera: CameraIcon,
   chef: ChefHatIcon,
+  cpu: CpuIcon,
+  hammer: HammerIcon,
+  anvil: AnvilIcon,
+  wrench: WrenchIcon,
+  shower: ShowerHeadIcon,
+  zap: ZapIcon,
+  shovel: ShovelIcon,
+  spray: SprayCanIcon,
 };
 
 export function CategoryIcon({ name, className }: { name: string | null; className?: string }) {

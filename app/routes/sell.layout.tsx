@@ -1,4 +1,4 @@
-import { BadgeCheckIcon, GaugeIcon, HandCoinsIcon, BellRingIcon, GiftIcon, PercentIcon, LayoutDashboardIcon, MegaphoneIcon, PackageIcon, RepeatIcon, SettingsIcon, ShoppingCartIcon, StarIcon } from "lucide-react";
+import { BadgeCheckIcon, ClipboardListIcon, GaugeIcon, HandCoinsIcon, BellRingIcon, GiftIcon, PercentIcon, LayoutDashboardIcon, MegaphoneIcon, PackageIcon, RepeatIcon, SettingsIcon, ShoppingCartIcon, StarIcon } from "lucide-react";
 import { NavLink, Outlet } from "react-router";
 import { Container } from "~/components/page";
 import { requireMerchant } from "~/lib/auth.server";
@@ -6,8 +6,8 @@ import { cn } from "~/lib/utils";
 import type { Route } from "./+types/sell.layout";
 
 export async function loader({ request }: Route.LoaderArgs) {
-  await requireMerchant(request);
-  return null;
+  const user = await requireMerchant(request);
+  return { isTradesperson: user.isTradesperson };
 }
 
 const NAV = [
@@ -26,11 +26,24 @@ const NAV = [
   { to: "/sell/business", label: "Business info", icon: BadgeCheckIcon },
 ];
 
-export default function SellLayout() {
+/** Handymen: jobs posted in their trades, their store is their profile, and no shop-only pages. */
+const TRADESPERSON_NAV = [
+  NAV[0],
+  { to: "/requests?jobs=mine", label: "Jobs in my trades", icon: ClipboardListIcon },
+  { to: "/sell/products", label: "Services & portfolio", icon: PackageIcon },
+  NAV[2],
+  { to: "/sell/reviews", label: "Reviews & votes", icon: StarIcon },
+  NAV[8],
+  NAV[10],
+  { to: "/sell/store", label: "Profile", icon: SettingsIcon },
+  { to: "/sell/business", label: "ID & certificates", icon: BadgeCheckIcon },
+];
+
+export default function SellLayout({ loaderData }: Route.ComponentProps) {
   return (
     <Container className="grid gap-6 py-6 md:grid-cols-[13rem_1fr] md:py-8">
       <nav className="scrollbar-none -mx-4 flex gap-1 overflow-x-auto px-4 md:sticky md:top-36 md:mx-0 md:flex-col md:self-start md:px-0">
-        {NAV.map((n) => (
+        {(loaderData.isTradesperson ? TRADESPERSON_NAV : NAV).map((n) => (
           <NavLink
             key={n.to}
             to={n.to}

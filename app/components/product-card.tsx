@@ -6,6 +6,7 @@ import { LISTING_BADGE, priceSuffix, soldWord } from "~/lib/property";
 import { autoSummary } from "~/lib/auto";
 import { cn } from "~/lib/utils";
 import { DealCountdown, priceDisplay } from "./price";
+import { VoteBadge } from "./handyman-votes";
 import { RatingBadge } from "./rating";
 import { SafeImage } from "./safe-image";
 import { FavouriteButton } from "./shopping";
@@ -75,6 +76,7 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
         <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
           {product.storeName}
           <RatingBadge average={product.ratingAvg} total={product.ratingCount} />
+          {product.isTradesperson ? <VoteBadge summary={{ up: product.votesUp ?? 0, down: product.votesDown ?? 0 }} /> : null}
         </p>
         {product.autoDetails ? <p className="truncate text-xs text-muted-foreground">{autoSummary(product.autoDetails)}</p> : null}
         {product.kind === "property" && product.propertyFeatures ? (

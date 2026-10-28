@@ -26,6 +26,7 @@ import { Form, Link, NavLink, useLocation, useSearchParams, useSubmit } from "re
 import type { ProductKind } from "~/db/schema";
 import type { SessionUser } from "~/lib/auth.server";
 import { AUTO_CATEGORY_SLUG } from "~/lib/auto";
+import { HANDYMAN_GROUP } from "~/lib/handyman";
 import { iconUrl } from "~/lib/brand";
 import { AuthLink } from "./auth-dialog";
 import { cn } from "~/lib/utils";
@@ -39,7 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 
-type Category = { id: string; name: string; slug: string; kind: ProductKind };
+type Category = { id: string; name: string; slug: string; kind: ProductKind; group: string | null };
 
 export function Logo({ className }: { className?: string }) {
   return (
@@ -374,17 +375,19 @@ export const SUBMENU_CHIP = {
   idle: "hover:border-primary/40 in-data-[header-collapsed]:border-transparent in-data-[header-collapsed]:bg-white/15 in-data-[header-collapsed]:text-white in-data-[header-collapsed]:hover:bg-white/30",
 };
 
-export const TOP_MENU: { key: ProductKind | "auto"; label: string; to: string }[] = [
+export const TOP_MENU: { key: ProductKind | "auto" | "handyman"; label: string; to: string }[] = [
   { key: "product", label: "All products", to: "/search?kind=product" },
   { key: "auto", label: "Auto", to: `/search?category=${AUTO_CATEGORY_SLUG}` },
   { key: "service", label: "Services", to: "/search?kind=service" },
+  { key: "handyman", label: "Handymen", to: `/search?group=${HANDYMAN_GROUP}` },
   { key: "digital", label: "Downloads", to: "/search?kind=digital" },
   { key: "property", label: "Real Estate", to: "/search?kind=property" },
 ];
 
 /**
  * The main menu: the four kinds of listing, plus Auto (a product category big enough for its own
- * tab, with vehicles and spare parts as its submenu). Other categories appear as a submenu on the
+ * tab, with vehicles and spare parts as its submenu) and Handymen (the trades, a group of service
+ * categories, as its submenu). Other categories appear as a submenu on the
  * browse page, so they aren't repeated here. The active tab follows the page (a category belongs
  * to its kind); browsing with nothing chosen means "All products".
  */
@@ -393,14 +396,17 @@ function TopMenu({ categories }: { categories: Category[] }) {
   const params = new URLSearchParams(location.search);
   const onBrowse = location.pathname === "/search";
   const category = params.get("category");
-  const fromCategory = categories.find((c) => c.slug === category)?.kind;
+  const chosen = categories.find((c) => c.slug === category);
+  const fromCategory = chosen?.group === HANDYMAN_GROUP ? "handyman" : chosen?.kind;
   const kind = params.get("kind") as ProductKind | null;
   // A typed search with no menu chosen looks everywhere, so no tab is highlighted.
   const active: (typeof TOP_MENU)[number]["key"] | null = !onBrowse
     ? null
     : category === AUTO_CATEGORY_SLUG
       ? "auto"
-      : (fromCategory ?? kind ?? (params.get("q") ? null : "product"));
+      : params.get("group") === HANDYMAN_GROUP
+        ? "handyman"
+        : (fromCategory ?? kind ?? (params.get("q") ? null : "product"));
   return (
     <nav className="brand-gradient" aria-label="Main menu">
       <div className="scrollbar-none mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4 py-1.5 md:px-6">
@@ -484,6 +490,7 @@ export function SiteFooter() {
           <p className="font-bold">Sell</p>
           <AuthLink mode="register" role="merchant" redirectTo="/sell" className="text-muted-foreground hover:text-primary">Open a store</AuthLink>
           <Link to="/advertise" className="text-muted-foreground hover:text-primary">Advertise on MyPlug</Link>
+          <AuthLink mode="register" role="handyman" className="text-muted-foreground hover:text-primary">Join as a handyman</AuthLink>
           <AuthLink mode="register" role="courier" redirectTo="/courier/profile" className="text-muted-foreground hover:text-primary">Deliver with MyPlug</AuthLink>
         </div>
         <div className="grid content-start gap-2">

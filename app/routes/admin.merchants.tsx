@@ -34,6 +34,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     .select({
       storeId: stores.id,
       registrationNumber: stores.registrationNumber,
+      isTradesperson: stores.isTradesperson,
+      trades: stores.trades,
+      serviceArea: stores.serviceArea,
       currency: stores.currency,
       listingBandId: stores.listingBandId,
       bandPaidUntil: stores.bandPaidUntil,
@@ -203,6 +206,7 @@ export default function AdminMerchants({ loaderData, actionData }: Route.Compone
                       {m.storeName}
                     </Link>
                     <StoreStatusBadge status={m.storeStatus} />
+                    {m.isTradesperson ? <Badge variant="accent">Handyman</Badge> : null}
                     {m.userStatus === "suspended" && m.storeStatus !== "suspended" ? <Badge variant="destructive">Account suspended</Badge> : null}
                   </div>
                   <p className="text-sm">
@@ -217,6 +221,11 @@ export default function AdminMerchants({ loaderData, actionData }: Route.Compone
                   <p className="text-sm">
                     Registration number: <strong>{m.registrationNumber ?? "not given"}</strong>
                   </p>
+                  {m.isTradesperson ? (
+                    <p className="text-sm">
+                      Trades: <strong>{m.trades.join(", ") || "none"}</strong> · works in {m.serviceArea ?? "?"}. Approve once their national ID (primary document) is verified.
+                    </p>
+                  ) : null}
                   <Form method="post" className="flex flex-wrap items-center gap-2 text-sm">
                     <input type="hidden" name="intent" value="currency" />
                     <input type="hidden" name="storeId" value={m.storeId} />

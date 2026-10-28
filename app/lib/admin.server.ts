@@ -26,8 +26,10 @@ export async function getAdminCounts() {
     db.select({ n: sql<number>`count(*)::int` }).from(schema.couriers).where(eq(schema.couriers.status, "pending")),
     db.select({ n: sql<number>`count(*)::int` }).from(schema.businessLicenses).where(eq(schema.businessLicenses.status, "pending")),
   ]);
-  const [[flagged], banners, bandPayments] = await Promise.all([
+  const [[flagged], [flaggedVotes], banners, bandPayments] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int` }).from(schema.reviews).where(eq(schema.reviews.status, "flagged")),
+    // Handyman comments are checked on the same admin page as reviews.
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.storeVotes).where(eq(schema.storeVotes.status, "flagged")),
     bannerCounts(),
     pendingBandPayments(),
   ]);
@@ -38,7 +40,7 @@ export async function getAdminCounts() {
     openReports: openReports.n,
     pendingCouriers: pendingCouriers.n,
     pendingLicenses: pendingLicenses.n,
-    flaggedReviews: flagged.n,
+    flaggedReviews: flagged.n + flaggedVotes.n,
     banners,
     bandPayments,
   };

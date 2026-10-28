@@ -26,7 +26,7 @@ export async function verifiedStoreIds(storeIds: string[]) {
 /** What customers may see about a business: registration number, badge, and the licences the admin chose to show. */
 export async function publicBusinessInfo(storeId: string) {
   const [store, licenses, verified] = await Promise.all([
-    db.query.stores.findFirst({ where: eq(stores.id, storeId), columns: { registrationNumber: true } }),
+    db.query.stores.findFirst({ where: eq(stores.id, storeId), columns: { registrationNumber: true, isTradesperson: true } }),
     db.query.businessLicenses.findMany({
       where: and(eq(businessLicenses.storeId, storeId), eq(businessLicenses.showToCustomers, true), current()),
       orderBy: [asc(businessLicenses.kind), asc(businessLicenses.name)],
@@ -34,10 +34,15 @@ export async function publicBusinessInfo(storeId: string) {
     }),
     verifiedStoreIds([storeId]),
   ]);
+  const tradesperson = store?.isTradesperson ?? false;
   return {
     verified: verified.has(storeId),
+    tradesperson,
     registrationNumber: store?.registrationNumber ?? null,
-    licenses: licenses.map(({ documentKey, ...l }) => ({ ...l, hasDocument: !!documentKey })),
+    licenses: licenses
+      // A tradesperson's primary document is their national ID: it's checked, never published.
+      .filter((l) => !(tradesperson && l.kind === "primary"))
+      .map(({ documentKey, ...l }) => ({ ...l, hasDocument: !!documentKey })),
   };
 }
 

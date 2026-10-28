@@ -104,6 +104,7 @@ export default [
   route("api/cron/daily", "routes/api.cron.daily.ts"),
   route("api/upload", "routes/api.upload.ts"),
   route("api/favourite", "routes/api.favourite.ts"),
+  route("api/vote", "routes/api.vote.ts"),
   route("api/cart", "routes/api.cart.ts"),
   route("api/media-upload", "routes/api.media-upload.ts"),
   route("files/:type/:id", "routes/files.ts"),

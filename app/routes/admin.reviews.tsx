@@ -1,3 +1,4 @@
+import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { FormError, PageHeader } from "~/components/page";
 import { Stars } from "~/components/rating";
@@ -9,6 +10,7 @@ import { requireAdmin } from "~/lib/auth.server";
 import { timeAgo } from "~/lib/format";
 import { adminReviews, getWordSettings, moderateReview, ReviewError, saveWordSettings, type ReviewDecision } from "~/lib/reviews.server";
 import { cn, str } from "~/lib/utils";
+import { adminVotes, flaggedVoteCount, moderateVote, VoteError } from "~/lib/votes.server";
 import type { Route } from "./+types/admin.reviews";
 
 export const meta: Route.MetaFunction = () => [{ title: "Reviews · Admin · MyPlug" }];
@@ -22,10 +24,18 @@ type Filter = (typeof FILTERS)[number]["value"];
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
-  const f = new URL(request.url).searchParams.get("show");
+  const url = new URL(request.url);
+  const f = url.searchParams.get("show");
   const filter: Filter = f === "all" || f === "hidden" ? f : "flagged";
-  const [reviews, words] = await Promise.all([adminReviews(filter), getWordSettings()]);
-  return { reviews, words, filter };
+  // Handyman community comments are moderated here too, on their own tab.
+  const tab = url.searchParams.get("tab") === "votes" ? "votes" : "reviews";
+  const [reviews, votes, flaggedVotes, words] = await Promise.all([
+    tab === "reviews" ? adminReviews(filter) : [],
+    tab === "votes" ? adminVotes(filter) : [],
+    flaggedVoteCount(),
+    getWordSettings(),
+  ]);
+  return { reviews, votes, flaggedVotes, words, filter, tab };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -38,16 +48,20 @@ export async function action({ request }: Route.ActionArgs) {
   const decision = str(form.get("decision")) as ReviewDecision;
   if (!["hide", "restore", "keep"].includes(decision)) return { error: "Unknown action." };
   try {
+    if (form.get("voteId")) {
+      await moderateVote(str(form.get("voteId")), decision, String(form.get("note") ?? ""));
+      return { ok: decision === "hide" ? "Comment taken down; its vote no longer counts. The voter and the handyman were told." : "Done." };
+    }
     await moderateReview(str(form.get("reviewId")), decision, String(form.get("note") ?? ""));
     return { ok: decision === "hide" ? "Review taken down. The customer and the merchant were told." : "Done. Everyone involved was told." };
   } catch (e) {
-    if (e instanceof ReviewError) return { error: e.message };
+    if (e instanceof ReviewError || e instanceof VoteError) return { error: e.message };
     throw e;
   }
 }
 
 export default function AdminReviews({ loaderData, actionData }: Route.ComponentProps) {
-  const { reviews, words, filter } = loaderData;
+  const { reviews, votes, flaggedVotes, words, filter, tab } = loaderData;
   const [params] = useSearchParams();
   const busy = useNavigation().state !== "idle";
   return (
@@ -55,6 +69,23 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
       <PageHeader title="Reviews" description="Merchants and couriers can ask you to check a review. Take down abuse, threats, lies and spam; keep honest criticism." />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
       {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+
+      <div className="flex gap-2 border-b pb-3">
+        {(
+          [
+            ["reviews", "Customer reviews"],
+            ["votes", `Handyman comments${flaggedVotes ? ` (${flaggedVotes})` : ""}`],
+          ] as const
+        ).map(([value, label]) => (
+          <Link
+            key={value}
+            to={`?${new URLSearchParams({ show: filter, tab: value })}`}
+            className={cn("rounded-full px-4 py-1.5 text-sm font-semibold", tab === value ? "bg-foreground text-background" : "bg-muted hover:bg-muted/70")}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
 
       <div className="flex gap-2">
         {FILTERS.map((f) => (
@@ -68,7 +99,54 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
         ))}
       </div>
 
-      {reviews.length ? (
+      {tab === "votes" ? (
+        votes.length ? (
+          <div className="grid gap-3">
+            {votes.map((v) => (
+              <Card key={v.id}>
+                <CardContent className="grid gap-2 pt-5">
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    {v.value > 0 ? <ThumbsUpIcon className="size-4 text-success" /> : <ThumbsDownIcon className="size-4 text-destructive" />}
+                    <Link to={`/s/${v.store.slug}`} className="font-semibold hover:underline">{v.store.name}</Link>
+                    <span className="text-xs text-muted-foreground">
+                      by <Link to={`/admin/users/${v.user.id}`} className="hover:underline">{v.user.name}</Link> · {timeAgo(v.createdAt)}
+                    </span>
+                    {v.status === "flagged" ? <Badge variant="highlight">Flagged</Badge> : v.status === "hidden" ? <Badge variant="muted">Taken down</Badge> : null}
+                  </div>
+                  {v.comment ? <p className="text-sm whitespace-pre-line">{v.comment}</p> : <p className="text-sm text-muted-foreground italic">Vote only.</p>}
+                  {v.reply ? <p className="border-l-2 pl-3 text-sm text-muted-foreground">Reply: {v.reply}</p> : null}
+                  {v.flagReason ? (
+                    <p className="rounded-lg bg-highlight/20 px-3 py-2 text-sm">
+                      <strong>Why they flagged it:</strong> {v.flagReason}
+                    </p>
+                  ) : null}
+                  {v.adminNote ? <p className="text-xs text-muted-foreground">Earlier admin note: {v.adminNote}</p> : null}
+                  <Form method="post" className="flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="voteId" value={v.id} />
+                    <Input name="note" placeholder="Note to the people involved (optional)" className="min-w-56 flex-1" />
+                    {v.status !== "hidden" ? (
+                      <Button type="submit" name="decision" value="hide" variant="destructive" size="sm" disabled={busy}>
+                        Take down
+                      </Button>
+                    ) : (
+                      <Button type="submit" name="decision" value="restore" size="sm" disabled={busy}>
+                        Put back up
+                      </Button>
+                    )}
+                    {v.status === "flagged" ? (
+                      <Button type="submit" name="decision" value="keep" variant="outline" size="sm" disabled={busy}>
+                        Keep it up
+                      </Button>
+                    ) : null}
+                  </Form>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{filter === "flagged" ? "Nothing waiting. Comments handymen flag appear here." : "No comments here."}</p>
+        )
+      ) : reviews.length ? (
         <div className="grid gap-3">
           {reviews.map((r) => (
             <Card key={r.id}>

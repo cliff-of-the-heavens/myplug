@@ -8,7 +8,7 @@ import { saleColumns } from "./pricing.server";
 import { liveAd } from "./ads.server";
 import { TIER_WEIGHT } from "./promotions";
 
-const { products, stores, promotions, categories, reviews } = schema;
+const { products, stores, promotions, categories, reviews, storeVotes, users } = schema;
 
 /** A product's average star rating and number of reviews (taken-down reviews don't count). */
 function ratingColumns(productId: typeof products.id) {
@@ -17,6 +17,19 @@ function ratingColumns(productId: typeof products.id) {
     ratingAvg: sql<number | null>`(select avg(${qualified(reviews.rating)}) ${of})`.mapWith((v) => (v == null ? null : Number(v))),
     ratingCount: sql<number>`(select count(*) ${of})`.mapWith(Number),
   };
+}
+
+/**
+ * Community votes on a tradesperson's store: up and down counts (hidden comments and suspended
+ * voters don't count). Only worked out for tradespeople; null for everyone else.
+ */
+export function voteColumns(storeId: typeof stores.id, isTradesperson: typeof stores.isTradesperson) {
+  const count = (value: number) =>
+    sql<number | null>`case when ${qualified(isTradesperson)} then (select count(*) from ${storeVotes}
+      inner join ${users} on ${qualified(users.id)} = ${qualified(storeVotes.userId)}
+      where ${qualified(storeVotes.storeId)} = ${qualified(storeId)} and ${qualified(storeVotes.value)} = ${sql.raw(String(value))}
+        and ${qualified(storeVotes.status)} <> 'hidden' and ${qualified(users.status)} = 'active') end`.mapWith((v) => (v == null ? null : Number(v)));
+  return { votesUp: count(1), votesDown: count(-1) };
 }
 
 function tierFromWeight(weight: number | null): PromotionTier | null {
@@ -71,6 +84,8 @@ const cardColumns = {
   storeName: stores.name,
   storeSlug: stores.slug,
   currency: stores.currency,
+  isTradesperson: stores.isTradesperson,
+  ...voteColumns(stores.id, stores.isTradesperson),
   promoWeight: activePromo.weight,
   // Real estate
   listingType: products.listingType,
@@ -189,11 +204,13 @@ function autoFilterSql(f: AutoFilters): SQL[] {
   return out;
 }
 
-export type SortKey = "featured" | "price-asc" | "price-desc" | "newest";
+export type SortKey = "featured" | "price-asc" | "price-desc" | "newest" | "top-voted";
 
 export async function searchProducts(opts: {
   q?: string;
   categorySlug?: string;
+  /** A category group (e.g. "handyman"), or null for listings outside every group. */
+  group?: string | null;
   storeId?: string;
   ids?: string[];
   kind?: ProductKind;
@@ -226,6 +243,12 @@ export async function searchProducts(opts: {
       sql`${products.categoryId} = (select ${categories.id} from ${categories} where ${categories.slug} = ${opts.categorySlug})`,
     );
   }
+  if (opts.group) {
+    filters.push(sql`${products.categoryId} in (select ${categories.id} from ${categories} where ${categories.group} = ${opts.group})`);
+  } else if (opts.group === null) {
+    // e.g. Services without the handyman trades, which have their own tab
+    filters.push(sql`(${products.categoryId} is null or ${products.categoryId} not in (select ${categories.id} from ${categories} where ${categories.group} is not null))`);
+  }
   if (opts.storeId) filters.push(eq(products.storeId, opts.storeId));
   if (opts.kind) filters.push(eq(products.kind, opts.kind));
   if (opts.ids) filters.push(inArray(products.id, opts.ids));
@@ -242,6 +265,7 @@ export async function searchProducts(opts: {
     "price-asc": asc(products.priceCents),
     "price-desc": desc(products.priceCents),
     newest: desc(products.createdAt),
+    "top-voted": sql`coalesce(${cardColumns.votesUp}, 0) - coalesce(${cardColumns.votesDown}, 0) desc`,
   }[opts.sort ?? "featured"];
 
   const limit = opts.limit ?? 60;

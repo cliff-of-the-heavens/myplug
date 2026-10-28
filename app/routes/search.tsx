@@ -1,4 +1,4 @@
-import { CarIcon, SearchXIcon, WrenchIcon } from "lucide-react";
+import { CarIcon, ClipboardListIcon, SearchXIcon, WrenchIcon } from "lucide-react";
 import { Form, Link, useSubmit } from "react-router";
 import { Container, EmptyState, PageHeader } from "~/components/page";
 import { ProductGrid } from "~/components/product-card";
@@ -12,6 +12,8 @@ import type { ListingType } from "~/db/schema";
 import { FEATURE_FLAGS, LISTING_TYPES } from "~/lib/property";
 import { AutoFilterFields, autoFiltersFromParams } from "~/components/auto-filters";
 import { AUTO_CATEGORY_SLUG } from "~/lib/auto";
+import { HANDYMAN_GROUP } from "~/lib/handyman";
+import { Button } from "~/components/ui/button";
 import { StickySubmenu, SUBMENU_CHIP } from "~/components/site-header";
 import type { Route } from "./+types/search";
 
@@ -20,6 +22,7 @@ const SORTS: { value: SortKey; label: string }[] = [
   { value: "newest", label: "Newest" },
   { value: "price-asc", label: "Price: low to high" },
   { value: "price-desc", label: "Price: high to low" },
+  { value: "top-voted", label: "Most up-voted" }, // Handymen tab only
 ];
 
 /** The first chip of the submenu under each main menu tab. */
@@ -37,11 +40,14 @@ export async function loader({ request }: Route.LoaderArgs) {
   const sort = SORTS.some((s) => s.value === sortParam) ? sortParam! : "featured";
   const inStock = url.searchParams.get("instock") === "1";
   const allCategories = await getCategories();
+  // ?group=handyman is the Handymen tab: service categories with their own menu. A trade implies it too.
+  const group = allCategories.find((c) => c.slug === category)?.group ?? (url.searchParams.get("group") === HANDYMAN_GROUP ? HANDYMAN_GROUP : null);
   // ?kind=service lists bookable services; a service category implies it too.
   // ?kind=service / digital / product narrows the listing; a category implies its kind.
   const kindParam = url.searchParams.get("kind");
   const kind: ProductKind | undefined =
     allCategories.find((c) => c.slug === category)?.kind ??
+    (group ? "service" : null) ??
     (kindParam === "service" || kindParam === "digital" || kindParam === "product" || kindParam === "property"
       ? kindParam
       : // Browsing with nothing chosen means "All products"; a typed search looks everywhere.
@@ -56,17 +62,19 @@ export async function loader({ request }: Route.LoaderArgs) {
   // Vehicle and spare-part filters, on the Auto category only
   const auto = category === AUTO_CATEGORY_SLUG ? autoFiltersFromParams(url.searchParams) : null;
 
-  const products = await searchProducts({ q, categorySlug: category, sort, kind, inStockOnly: inStock && kind === "product", listingType, features, titleDeed, auto: auto ?? undefined });
-  const categories = allCategories.filter((c) => (kind ? c.kind === kind : true));
+  // Services leave out the trades (they have the Handymen tab); a typed search with no tab looks everywhere.
+  const searchGroup = group ?? (kind === "service" && !category ? null : undefined);
+  const products = await searchProducts({ q, categorySlug: category, group: searchGroup, sort: sort === "top-voted" && !group ? "featured" : sort, kind, inStockOnly: inStock && kind === "product", listingType, features, titleDeed, auto: auto ?? undefined });
+  const categories = allCategories.filter((c) => (kind ? c.kind === kind && (c.group ?? null) === group : true));
   const categoryName = categories.find((c) => c.slug === category)?.name;
-  const heading = q ? `Results for "${q}"` : (categoryName ?? (kind === "service" ? "Services" : kind === "digital" ? "Digital downloads" : kind === "property" ? "Real Estate" : "All products"));
+  const heading = q ? `Results for "${q}"` : (categoryName ?? (group ? "Handymen" : kind === "service" ? "Services" : kind === "digital" ? "Digital downloads" : kind === "property" ? "Real Estate" : "All products"));
 
   const banners = await pageBanners(request, ["category_top", "sidebar"]);
-  return { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto };
+  return { products, categories, q, category, group, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto };
 }
 
 export default function Search({ loaderData }: Route.ComponentProps) {
-  const { products, categories, q, category, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto } = loaderData;
+  const { products, categories, q, category, group, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto } = loaderData;
   const submit = useSubmit();
 
   const chip = (to: string, label: string, active: boolean, Icon?: typeof CarIcon) => (
@@ -85,7 +93,8 @@ export default function Search({ loaderData }: Route.ComponentProps) {
   const categoryChip = (slug: string | undefined, label: string) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
-    if (kind) params.set("kind", kind);
+    if (group) params.set("group", group);
+    else if (kind) params.set("kind", kind);
     if (slug) params.set("category", slug);
     return chip(`/search?${params}`, label, category === slug);
   };
@@ -114,7 +123,7 @@ export default function Search({ loaderData }: Route.ComponentProps) {
             </>
           ) : (
             <>
-              {categoryChip(undefined, kind ? ALL_LABEL[kind] : "Everything")}
+              {categoryChip(undefined, group ? "All handymen" : kind ? ALL_LABEL[kind] : "Everything")}
               {categories.filter((c) => c.slug !== AUTO_CATEGORY_SLUG).map((c) => categoryChip(c.slug, c.name))}
             </>
           )}
@@ -128,11 +137,11 @@ export default function Search({ loaderData }: Route.ComponentProps) {
         >
           {q ? <input type="hidden" name="q" value={q} /> : null}
           {category ? <input type="hidden" name="category" value={category} /> : null}
-          {kind ? <input type="hidden" name="kind" value={kind} /> : null}
+          {group ? <input type="hidden" name="group" value={group} /> : kind ? <input type="hidden" name="kind" value={kind} /> : null}
           <label className="flex items-center gap-2 text-sm">
             Sort by
             <NativeSelect name="sort" defaultValue={sort} className="w-auto">
-              {SORTS.map((s) => (
+              {SORTS.filter((s) => s.value !== "top-voted" || group).map((s) => (
                 <option key={s.value} value={s.value}>
                   {s.label}
                 </option>
@@ -173,6 +182,17 @@ export default function Search({ loaderData }: Route.ComponentProps) {
           ) : null}
         </Form>
 
+        {group ? (
+          <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-4">
+            <ClipboardListIcon className="size-6 shrink-0 text-primary" />
+            <p className="min-w-48 flex-1 text-sm">
+              <span className="font-bold">Something needs fixing?</span> Describe the job and the handymen in that trade will send you quotes.
+            </p>
+            <Button asChild>
+              <Link to={`/requests/new${category ? `?trade=${category}` : ""}`}>Post a job</Link>
+            </Button>
+          </div>
+        ) : null}
         <BannerSlot ads={banners.category_top} shape="leaderboard" className="mb-6" />
         {/* Results and the side ad are separate columns; the results column keeps its own height
             (items-start), so a tall ad never stretches the product cards. */}
@@ -182,11 +202,23 @@ export default function Search({ loaderData }: Route.ComponentProps) {
               <ProductGrid products={products} />
             ) : (
               <EmptyState icon={SearchXIcon} title="Nothing found">
-                Try another search, or{" "}
-                <Link to="/requests/new" className="font-semibold text-primary">
-                  post a request
-                </Link>{" "}
-                and let merchants find it for you.
+                {group ? (
+                  <>
+                    No handymen listed here yet.{" "}
+                    <Link to={`/requests/new${category ? `?trade=${category}` : ""}`} className="font-semibold text-primary">
+                      Post a job
+                    </Link>{" "}
+                    and tradespeople will come to you.
+                  </>
+                ) : (
+                  <>
+                    Try another search, or{" "}
+                    <Link to="/requests/new" className="font-semibold text-primary">
+                      post a request
+                    </Link>{" "}
+                    and let merchants find it for you.
+                  </>
+                )}
               </EmptyState>
             )}
           </div>

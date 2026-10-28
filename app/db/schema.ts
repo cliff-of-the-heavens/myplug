@@ -177,6 +177,11 @@ export const stores = pgTable("stores", {
   bandPaidUntil: timestamp("band_paid_until", { withTimezone: true }), // paid bands fall back to the default after this
   reviewNote: text("review_note"), // admin's reason when rejecting/suspending
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+  // Handymen: a tradesperson's store is their profile (registration number optional, ID required)
+  isTradesperson: boolean("is_tradesperson").notNull().default(false),
+  trades: text("trades").array().notNull().default(sql`'{}'::text[]`), // trade category slugs; matching jobs are sent to them
+  serviceArea: text("service_area"), // towns/districts they work in
+  workReferences: text("work_references"), // past clients and jobs, shown on the profile
   ...timestamps,
 });
 
@@ -189,6 +194,7 @@ export const categories = pgTable("categories", {
   icon: text("icon"), // lucide icon name
   // Plain text (not the product_kind enum) so migrations can add categories for new kinds.
   kind: text("kind").$type<ProductKind>().notNull().default("product"),
+  group: text("category_group"), // categories with their own main menu tab, e.g. "handyman" trades
 });
 
 export const products = pgTable(
@@ -679,6 +685,33 @@ export const reviews = pgTable(
   ],
 );
 
+/**
+ * Community votes on a tradesperson: anyone signed in (not just past customers) can vote up or
+ * down once, with an optional comment. Comments are moderated like reviews.
+ */
+export const storeVotes = pgTable(
+  "store_votes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    storeId: uuid("store_id")
+      .notNull()
+      .references(() => stores.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    value: integer("value").notNull(), // +1 or -1
+    comment: text("comment"), // obscene words are masked before saving
+    status: reviewVisibility("status").notNull().default("visible"),
+    flagReason: text("flag_reason"), // why the tradesperson asked for it to be checked
+    flaggedAt: timestamp("flagged_at", { withTimezone: true }),
+    reply: text("reply"), // the tradesperson's public reply
+    adminNote: text("admin_note"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("store_votes_store_user_idx").on(t.storeId, t.userId), index("store_votes_status_idx").on(t.status)],
+);
+
 /** Where banner ads can appear, with the creative specs and weekly price (admin-editable). */
 export const adPlacements = pgTable("ad_placements", {
   key: text("key").primaryKey(), // hero, home_banner, sidebar, category_top
@@ -1140,6 +1173,8 @@ export const requests = pgTable("requests", {
   imageUrl: text("image_url"),
   imageHidden: boolean("image_hidden").notNull().default(false),
   budgetCents: money("budget_cents"),
+  categoryId: uuid("category_id").references(() => categories.id, { onDelete: "set null" }), // jobs: the trade needed
+  location: text("location"), // jobs: where the work is
   status: requestStatus("status").notNull().default("open"),
   ...timestamps,
 });
@@ -1233,6 +1268,12 @@ export const storesRelations = relations(stores, ({ one, many }) => ({
   licenses: many(businessLicenses),
   preferredCourier: one(couriers, { fields: [stores.preferredCourierId], references: [couriers.id] }),
   listingBand: one(listingBands, { fields: [stores.listingBandId], references: [listingBands.id] }),
+  votes: many(storeVotes),
+}));
+
+export const storeVotesRelations = relations(storeVotes, ({ one }) => ({
+  store: one(stores, { fields: [storeVotes.storeId], references: [stores.id] }),
+  user: one(users, { fields: [storeVotes.userId], references: [users.id] }),
 }));
 
 export const storeSubscriptionsRelations = relations(storeSubscriptions, ({ one }) => ({
@@ -1412,6 +1453,7 @@ export const billsRelations = relations(bills, ({ one }) => ({
 
 export const requestsRelations = relations(requests, ({ one, many }) => ({
   customer: one(users, { fields: [requests.customerId], references: [users.id] }),
+  category: one(categories, { fields: [requests.categoryId], references: [categories.id] }),
   conversations: many(conversations),
 }));
 

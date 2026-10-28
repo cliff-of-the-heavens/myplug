@@ -1,7 +1,9 @@
-import { BikeIcon, HourglassIcon, ShoppingBagIcon, StoreIcon } from "lucide-react";
+import { BikeIcon, HourglassIcon, ShoppingBagIcon, StoreIcon, WrenchIcon } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
-import { Link, useFetcher, useLocation, type LinkProps } from "react-router";
+import { Link, useFetcher, useLocation, useRouteLoaderData, type LinkProps } from "react-router";
+import { HANDYMAN_GROUP } from "~/lib/handyman";
 import { cn } from "~/lib/utils";
+import type { loader as rootLoader } from "~/root";
 import type { action as loginAction } from "~/routes/login";
 import type { action as forgotAction } from "~/routes/forgot-password";
 import type { action as registerAction } from "~/routes/register";
@@ -13,7 +15,12 @@ import { Field, Input, Textarea } from "./ui/input";
 export type AuthMode = "login" | "register" | "forgot";
 
 const MODE_PATH: Record<AuthMode, string> = { login: "/login", register: "/register", forgot: "/forgot-password" };
-type Role = "customer" | "merchant" | "courier";
+type Role = "customer" | "merchant" | "courier" | "handyman";
+
+/** The sign-up choice named in ?role=, defaulting to a shopper. */
+export function toRole(value: string | null | undefined): Role {
+  return value === "merchant" || value === "courier" || value === "handyman" ? value : "customer";
+}
 type AuthOptions = { redirectTo?: string; role?: Role };
 
 const AUTH_PARAMS = ["auth", "redirectTo", "role"];
@@ -125,17 +132,19 @@ export function RegisterForm({
   const [role, setRole] = useState<Role>(defaultRole);
   const busy = fetcher.state !== "idle";
   const errors = fetcher.data?.errors ?? {};
+  const trades = (useRouteLoaderData<typeof rootLoader>("root")?.categories ?? []).filter((c) => c.group === HANDYMAN_GROUP);
 
   const roles = [
     { value: "customer" as const, icon: ShoppingBagIcon, title: "I want to shop", text: "Order, track and request items" },
     { value: "merchant" as const, icon: StoreIcon, title: "I want to sell", text: "Products, services or downloads" },
+    { value: "handyman" as const, icon: WrenchIcon, title: "I fix things", text: "Handymen and tradespeople" },
     { value: "courier" as const, icon: BikeIcon, title: "I deliver", text: "Register as a courier" },
   ];
 
   return (
     <fetcher.Form method="post" action="/register" className="grid gap-4">
       <input type="hidden" name="redirectTo" value={redirectTo} />
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {roles.map((r) => (
           <label
             key={r.value}
@@ -165,8 +174,8 @@ export function RegisterForm({
       <Field label="Email" error={errors.email?.[0]}>
         <Input name="email" type="email" autoComplete="email" required />
       </Field>
-      <Field label={role === "courier" ? "Phone" : "Phone (optional)"} error={errors.phone?.[0]}>
-        <Input name="phone" type="tel" autoComplete="tel" required={role === "courier"} />
+      <Field label={role === "courier" || role === "handyman" ? "Phone" : "Phone (optional)"} error={errors.phone?.[0]}>
+        <Input name="phone" type="tel" autoComplete="tel" required={role === "courier" || role === "handyman"} />
       </Field>
       <Field label="Password" error={errors.password?.[0]} hint="At least 8 characters">
         <Input name="password" type="password" autoComplete="new-password" required minLength={8} />
@@ -191,6 +200,39 @@ export function RegisterForm({
         </div>
       ) : null}
 
+      {role === "handyman" ? (
+        <div className="grid gap-4 rounded-xl bg-secondary/60 p-4">
+          <Field label="Trading name" error={errors.storeName?.[0]} hint="Your own name is fine, e.g. “Banda Plumbing” or “John Phiri”">
+            <Input name="storeName" required />
+          </Field>
+          <fieldset className="grid gap-2">
+            <legend className="mb-2 text-sm font-medium">Your trades</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {trades.map((t) => (
+                <label key={t.slug} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="trades" value={t.slug} className="size-4 accent-primary" />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+            {errors.trades?.[0] ? <p className="text-sm text-destructive">{errors.trades[0]}</p> : null}
+          </fieldset>
+          <Field label="Where you work" error={errors.serviceArea?.[0]} hint="Towns or areas you'll travel to">
+            <Input name="serviceArea" required placeholder="e.g. Lilongwe: Area 47, Area 49 and Kanengo" />
+          </Field>
+          <Field label="Business registration number (optional)" error={errors.registrationNumber?.[0]}>
+            <Input name="registrationNumber" maxLength={60} />
+          </Field>
+          <Field label="About your work (optional)">
+            <Textarea name="storeDescription" rows={2} className="min-h-0" placeholder="Years of experience, what you specialise in" />
+          </Field>
+          <p className="flex gap-2 text-xs text-muted-foreground">
+            <HourglassIcon className="size-4 shrink-0 text-primary" />
+            Next you'll upload your national ID (and any trade certificates). An admin checks them before your profile goes live.
+          </p>
+        </div>
+      ) : null}
+
       {role === "courier" ? (
         <p className="flex gap-2 rounded-xl bg-secondary/60 p-3 text-xs text-muted-foreground">
           <HourglassIcon className="size-4 shrink-0 text-primary" />
@@ -209,7 +251,15 @@ export function RegisterForm({
       </label>
       <FormError error={errors.terms?.[0] ?? errors.role?.[0]} />
       <Button type="submit" size="lg" disabled={busy}>
-        {busy ? "Creating account..." : role === "merchant" ? "Apply to sell" : role === "courier" ? "Register as a courier" : "Create account"}
+        {busy
+          ? "Creating account..."
+          : role === "merchant"
+            ? "Apply to sell"
+            : role === "handyman"
+              ? "Join as a handyman"
+              : role === "courier"
+                ? "Register as a courier"
+                : "Create account"}
       </Button>
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{" "}
@@ -249,7 +299,7 @@ export function AuthDialogProvider({ signedIn, children }: { signedIn: boolean; 
         mode,
         opts: {
           redirectTo: params.get("redirectTo") ?? undefined,
-          role: params.get("role") === "merchant" ? "merchant" : undefined,
+          role: params.get("role") ? toRole(params.get("role")) : undefined,
         },
       });
     }

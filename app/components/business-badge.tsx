@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 
 export type BusinessInfo = {
   verified: boolean;
+  tradesperson?: boolean; // a handyman: the primary document is a national ID, not a business registration
   registrationNumber: string | null;
   licenses: { id: string; kind: "primary" | "other"; name: string; number: string | null; issuer: string | null; issuedOn: string | null; expiresOn: string | null; hasDocument: boolean }[];
 };
@@ -13,6 +14,7 @@ const d = (s: string) => formatDay(s, { day: "numeric", month: "short", year: "n
 
 /** Green "Registered business" badge (or a neutral "Business info" link) that opens the business details. */
 export function BusinessBadge({ storeName, info, className }: { storeName: string; info: BusinessInfo; className?: string }) {
+  const label = info.tradesperson ? (info.verified ? "ID verified" : "ID not verified") : info.verified ? "Registered business" : "Business info";
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -25,7 +27,7 @@ export function BusinessBadge({ storeName, info, className }: { storeName: strin
           )}
         >
           {info.verified ? <BadgeCheckIcon className="size-4" /> : <InfoIcon className="size-3.5" />}
-          {info.verified ? "Registered business" : "Business info"}
+          {label}
         </button>
       </DialogTrigger>
       <DialogContent>
@@ -34,9 +36,13 @@ export function BusinessBadge({ storeName, info, className }: { storeName: strin
             {info.verified ? <BadgeCheckIcon className="size-6 text-success" /> : null} {storeName}
           </DialogTitle>
           <DialogDescription>
-            {info.verified
-              ? "MyPlug has checked this business's registration document, and it's within its validity dates."
-              : "This business hasn't had a registration document verified by MyPlug yet. Take extra care."}
+            {info.tradesperson
+              ? info.verified
+                ? "MyPlug has checked this tradesperson's national ID. The ID itself is never shown publicly."
+                : "MyPlug hasn't checked this tradesperson's ID yet. Take extra care."
+              : info.verified
+                ? "MyPlug has checked this business's registration document, and it's within its validity dates."
+                : "This business hasn't had a registration document verified by MyPlug yet. Take extra care."}
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-3 text-sm">
@@ -64,7 +70,7 @@ export function BusinessBadge({ storeName, info, className }: { storeName: strin
               ))}
             </ul>
           ) : (
-            <p className="text-muted-foreground">No licences are shown publicly.</p>
+            <p className="text-muted-foreground">{info.tradesperson ? "No trade certificates are shown publicly." : "No licences are shown publicly."}</p>
           )}
           <p className="text-xs text-muted-foreground">
             A badge reflects the documents MyPlug saw when it checked them. It isn't a guarantee: see our Terms of Use.

@@ -20,7 +20,7 @@ export const meta: Route.MetaFunction = () => [{ title: "Business information ·
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireMerchantAccount(request);
   const [store, licenses, verified] = await Promise.all([
-    db.query.stores.findFirst({ where: eq(schema.stores.id, user.storeId), columns: { registrationNumber: true, status: true } }),
+    db.query.stores.findFirst({ where: eq(schema.stores.id, user.storeId), columns: { registrationNumber: true, status: true, isTradesperson: true } }),
     storeLicenses(user.storeId),
     verifiedStoreIds([user.storeId]),
   ]);
@@ -39,8 +39,9 @@ export async function action({ request }: Route.ActionArgs) {
   try {
     if (intent === "registration") {
       const number = str(form.get("registrationNumber")).slice(0, 60);
-      if (number.length < 3) return { error: "Enter your business registration number." };
-      await db.update(schema.stores).set({ registrationNumber: number }).where(eq(schema.stores.id, user.storeId));
+      // Tradespeople may not be registered businesses, so they can clear it.
+      if (number.length < 3 && !user.isTradesperson) return { error: "Enter your business registration number." };
+      await db.update(schema.stores).set({ registrationNumber: number || null }).where(eq(schema.stores.id, user.storeId));
       return { ok: "Registration number saved." };
     }
     if (intent === "delete") {
@@ -75,6 +76,7 @@ export default function Business({ loaderData, actionData }: Route.ComponentProp
   const { store, verified, licenses, today } = loaderData;
   const busy = useNavigation().state !== "idle";
   const hasPrimary = licenses.some((l) => l.kind === "primary");
+  const trade = store.isTradesperson;
 
   return (
     <Container className="max-w-3xl py-8">
@@ -82,9 +84,15 @@ export default function Business({ loaderData, actionData }: Route.ComponentProp
         <ArrowLeftIcon className="size-4" /> Back
       </Link>
       <PageHeader
-        title="Business information"
+        title={trade ? "ID & certificates" : "Business information"}
         description={
-          verified ? (
+          trade ? (
+            verified ? (
+              <span className="flex items-center gap-1.5 font-semibold text-success"><BadgeCheckIcon className="size-5" /> ID verified: customers see a green badge</span>
+            ) : (
+              "Upload a clear photo of your national ID (or passport). An admin checks it before your profile goes live; it's never shown to customers. Trade certificates are optional and can be shown on your profile."
+            )
+          ) : verified ? (
             <span className="flex items-center gap-1.5 font-semibold text-success"><BadgeCheckIcon className="size-5" /> Registered business: customers see a green badge</span>
           ) : (
             "Upload your business registration certificate or licence. Once an admin verifies it, customers see a green 'Registered business' badge."
@@ -98,8 +106,8 @@ export default function Business({ loaderData, actionData }: Route.ComponentProp
         <CardContent className="pt-5">
           <Form method="post" className="flex flex-wrap items-end gap-2">
             <input type="hidden" name="intent" value="registration" />
-            <Field label="Business registration number" className="flex-1">
-              <Input name="registrationNumber" defaultValue={store.registrationNumber ?? ""} required minLength={3} />
+            <Field label={trade ? "Business registration number (optional)" : "Business registration number"} className="flex-1">
+              <Input name="registrationNumber" defaultValue={store.registrationNumber ?? ""} required={!trade} minLength={trade ? undefined : 3} />
             </Field>
             <Button type="submit" disabled={busy}>Save</Button>
           </Form>
@@ -146,18 +154,18 @@ export default function Business({ loaderData, actionData }: Route.ComponentProp
           <Form method="post" encType="multipart/form-data" className="grid gap-3 sm:grid-cols-2">
             <Field label="Type">
               <NativeSelect name="kind" defaultValue={hasPrimary ? "other" : "primary"}>
-                <option value="primary">Business registration / licence (primary)</option>
-                <option value="other">Other licence or permit</option>
+                <option value="primary">{trade ? "National ID or passport (primary)" : "Business registration / licence (primary)"}</option>
+                <option value="other">{trade ? "Trade certificate or licence" : "Other licence or permit"}</option>
               </NativeSelect>
             </Field>
             <Field label="Document name">
-              <Input name="name" required placeholder="e.g. Certificate of Registration" />
+              <Input name="name" required placeholder={trade ? "e.g. National ID, Trade Test Grade II" : "e.g. Certificate of Registration"} />
             </Field>
             <Field label="Number">
               <Input name="number" />
             </Field>
             <Field label="Issued by">
-              <Input name="issuer" placeholder="e.g. Registrar General, City Council" />
+              <Input name="issuer" placeholder={trade ? "e.g. NRB, TEVETA" : "e.g. Registrar General, City Council"} />
             </Field>
             <Field label="Issued on">
               <Input name="issuedOn" type="date" />

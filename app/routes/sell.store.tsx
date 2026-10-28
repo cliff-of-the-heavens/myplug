@@ -11,6 +11,8 @@ import { storeDeliveryMode, type StoreDeliveryMode } from "~/db/schema";
 import { availableCouriers } from "~/lib/delivery.server";
 import { db, schema } from "~/db/client.server";
 import { requireMerchant } from "~/lib/auth.server";
+import { getCategories } from "~/lib/catalog.server";
+import { HANDYMAN_GROUP } from "~/lib/handyman";
 import { currencyName } from "~/lib/format";
 import { uploadImage, UploadError } from "~/lib/upload.server";
 import { cn, isUuid, str } from "~/lib/utils";
@@ -20,11 +22,12 @@ export const meta: Route.MetaFunction = () => [{ title: "Store settings · MyPlu
 
 export async function loader({ request }: Route.LoaderArgs) {
   const user = await requireMerchant(request);
-  const [store, couriers] = await Promise.all([
+  const [store, couriers, categories] = await Promise.all([
     db.query.stores.findFirst({ where: eq(schema.stores.id, user.storeId) }),
     availableCouriers(),
+    getCategories(),
   ]);
-  return { store: store!, couriers };
+  return { store: store!, couriers, trades: categories.filter((c) => c.group === HANDYMAN_GROUP) };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -38,6 +41,16 @@ export async function action({ request }: Route.ActionArgs) {
   if (deliveryMode === "merchant_courier" && !isUuid(courierId)) return { error: "Choose the courier who delivers for you." };
   const pickupAddress = str(form.get("pickupAddress")).slice(0, 300);
   if (deliveryMode !== "merchant" && pickupAddress.length < 5) return { error: "Add the address couriers and customers collect from." };
+  // Handymen: trades (matching jobs are sent to them), where they work, and references
+  let tradesperson = {};
+  if (user.isTradesperson) {
+    const known = new Set((await getCategories()).filter((c) => c.group === HANDYMAN_GROUP).map((c) => c.slug));
+    const trades = form.getAll("trades").map(String).filter((t) => known.has(t));
+    if (!trades.length) return { error: "Choose at least one trade." };
+    const serviceArea = str(form.get("serviceArea")).slice(0, 200);
+    if (serviceArea.length < 2) return { error: "Say where you work." };
+    tradesperson = { trades, serviceArea, workReferences: str(form.get("workReferences")).slice(0, 2000) || null };
+  }
 
   let logoUrl: string | null;
   try {
@@ -54,6 +67,7 @@ export async function action({ request }: Route.ActionArgs) {
       deliveryMode,
       preferredCourierId: deliveryMode === "merchant_courier" ? courierId : null,
       pickupAddress: pickupAddress || null,
+      ...tradesperson,
       ...(logoUrl ? { logoUrl } : {}),
     })
     .where(eq(schema.stores.id, user.storeId));
@@ -61,17 +75,18 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function StoreSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { store, couriers } = loaderData;
+  const { store, couriers, trades } = loaderData;
+  const trade = store.isTradesperson;
   const busy = useNavigation().state !== "idle";
   const [mode, setMode] = useState<StoreDeliveryMode>(store.deliveryMode);
   return (
     <>
       <PageHeader
-        title="Store settings"
+        title={trade ? "Your handyman profile" : "Store settings"}
         actions={
           <Button asChild variant="outline">
             <Link to={`/s/${store.slug}`}>
-              <ExternalLinkIcon /> View store
+              <ExternalLinkIcon /> {trade ? "View profile" : "View store"}
             </Link>
           </Button>
         }
@@ -81,7 +96,7 @@ export default function StoreSettings({ loaderData, actionData }: Route.Componen
           <Form method="post" encType="multipart/form-data" className="grid gap-4">
             <FormError error={actionData && "error" in actionData ? actionData.error : null} />
             {actionData && "ok" in actionData ? <p className="text-sm font-medium text-success">Saved!</p> : null}
-            <Field label="Logo">
+            <Field label={trade ? "Profile photo or logo" : "Logo"}>
               <ImageDropzone
                 name="logo"
                 defaultPreview={store.logoUrl}
@@ -90,16 +105,40 @@ export default function StoreSettings({ loaderData, actionData }: Route.Componen
                 className="size-36"
               />
             </Field>
-            <Field label="Store name">
+            <Field label={trade ? "Trading name" : "Store name"}>
               <Input name="name" required defaultValue={store.name} />
             </Field>
-            <Field label="About your store">
+            <Field label={trade ? "About your work" : "About your store"}>
               <Textarea name="description" rows={4} defaultValue={store.description ?? ""} />
             </Field>
+            {trade ? (
+              <>
+                <fieldset className="grid gap-2">
+                  <legend className="mb-1 text-sm font-semibold">Your trades</legend>
+                  <p className="-mt-1 text-xs text-muted-foreground">Jobs customers post in these trades are sent to you.</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {trades.map((t) => (
+                      <label key={t.slug} className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" name="trades" value={t.slug} defaultChecked={store.trades.includes(t.slug)} className="size-4 accent-primary" />
+                        {t.name}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+                <Field label="Where you work" hint="Towns or areas you'll travel to">
+                  <Input name="serviceArea" required defaultValue={store.serviceArea ?? ""} />
+                </Field>
+                <Field label="References" hint="Past clients or jobs customers can check, one per line, e.g. “Rewired Mzuzu Lodge, 2025: ask for the manager”">
+                  <Textarea name="workReferences" rows={4} defaultValue={store.workReferences ?? ""} />
+                </Field>
+              </>
+            ) : null}
             <p className="rounded-lg bg-muted px-3 py-2 text-sm">
               Currency: <strong>{currencyName(store.currency)}</strong>. Set by MyPlug; contact support to change it.
             </p>
-            <fieldset className="grid gap-2">
+            {/* Handymen go to the customer; anything they sell they hand over themselves. */}
+            {trade ? <input type="hidden" name="deliveryMode" value="merchant" /> : null}
+            <fieldset className={cn("grid gap-2", trade && "hidden")}>
               <legend className="mb-1 text-sm font-semibold">Who delivers your orders?</legend>
               {(
                 [
