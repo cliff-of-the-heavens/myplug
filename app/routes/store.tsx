@@ -94,15 +94,16 @@ export default function StorePage({ loaderData }: Route.ComponentProps) {
   const { store, products, follow, business, sales, ratings, reviewList, handyman, signedIn, isOwner } = loaderData;
   return (
     <>
-      <div className="brand-gradient h-32 md:h-44" />
-      <Container className="-mt-12 grid gap-8 pb-10">
+      <div className="brand-gradient h-16 md:h-24" />
+      {/* A third of the logo overlaps the banner; the name and byline line up with the rest, below it. */}
+      <Container className="grid gap-8 pb-10">
         <div className="flex flex-wrap items-end gap-4">
           <SafeImage
             src={store.logoUrl}
             alt={store.name}
-            className="size-24 rounded-2xl border-4 border-background shadow-lg"
+            className="-mt-8 size-24 shrink-0 rounded-2xl border-4 border-background shadow-lg"
           />
-          <div className="grid gap-1 pb-1">
+          <div className="grid min-w-0 gap-1 pb-1">
             <h1 className="flex flex-wrap items-center gap-2 text-2xl font-extrabold tracking-tight md:text-3xl">
               {store.name} <BusinessBadge storeName={store.name} info={business} />
             </h1>
