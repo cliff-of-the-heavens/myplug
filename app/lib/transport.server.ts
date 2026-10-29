@@ -1,6 +1,7 @@
-import { and, arrayContains, asc, desc, eq, gte, inArray, lte, ne, or } from "drizzle-orm";
+import { and, arrayContains, asc, desc, eq, gte, ilike, inArray, lte, ne, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
-import type { TransportType } from "~/db/schema";
+import { qualified } from "~/db/sql";
+import type { TransportJobStatus, TransportType } from "~/db/schema";
 import { isDateStr, today } from "./dates";
 import { notify } from "./notify.server";
 import { referenceNumber } from "./orders.server";
@@ -408,4 +409,180 @@ export async function customerBookings(customerId: string) {
     car: { ...car, owner: courier.name },
     ownerPhone: b.status === "confirmed" ? courier.phone : null,
   }));
+}
+
+// ---------------------------------------------------------------- admin
+
+/** Open requests this old with no live offer count as unanswered (the admin nav badge). */
+export const UNANSWERED_HOURS = 2;
+
+/** Open requests nobody has offered on after UNANSWERED_HOURS. */
+export const unansweredJobs = () =>
+  and(
+    eq(transportJobs.status, "open"),
+    sql`${transportJobs.createdAt} < now() - make_interval(hours => ${UNANSWERED_HOURS})`,
+    sql`not exists (select 1 from ${transportOffers} where ${qualified(transportOffers.jobId)} = ${qualified(transportJobs.id)} and ${qualified(transportOffers.status)} = 'offered')`,
+  );
+
+/** What happened in Transport over the last `days` days. */
+export async function transportStats(days = 30) {
+  const since = new Date(Date.now() - days * 86_400_000);
+  const [jobs, bookings, [waiting]] = await Promise.all([
+    db
+      .select({ type: transportJobs.type, status: transportJobs.status, n: sql<number>`count(*)::int` })
+      .from(transportJobs)
+      .where(gte(transportJobs.createdAt, since))
+      .groupBy(transportJobs.type, transportJobs.status),
+    db
+      .select({ status: carBookings.status, n: sql<number>`count(*)::int` })
+      .from(carBookings)
+      .where(gte(carBookings.createdAt, since))
+      .groupBy(carBookings.status),
+    db.select({ n: sql<number>`count(*)::int` }).from(transportJobs).where(unansweredJobs()),
+  ]);
+  const byType = (t: TransportType) => jobs.filter((j) => j.type === t).reduce((s, j) => s + j.n, 0);
+  const byStatus = (st: TransportJobStatus) => jobs.filter((j) => j.status === st).reduce((s, j) => s + j.n, 0);
+  return {
+    days,
+    total: jobs.reduce((s, j) => s + j.n, 0),
+    types: { taxi: byType("taxi"), moving: byType("moving"), parcel: byType("parcel"), car_hire: byType("car_hire") },
+    booked: byStatus("booked"),
+    completed: byStatus("completed"),
+    cancelled: byStatus("cancelled"),
+    carBookings: bookings.reduce((s, b) => s + b.n, 0),
+    carConfirmed: bookings.filter((b) => b.status === "confirmed" || b.status === "completed").reduce((s, b) => s + b.n, 0),
+    unanswered: waiting.n,
+  };
+}
+
+/** Every request, for admins: all contact details and offers, so disputes can be sorted out. */
+export async function adminJobs(filter: { type?: TransportType; status?: TransportJobStatus; q?: string; unanswered?: boolean }) {
+  const where: (SQL | undefined)[] = [
+    filter.type ? eq(transportJobs.type, filter.type) : undefined,
+    filter.status ? eq(transportJobs.status, filter.status) : undefined,
+    filter.unanswered ? unansweredJobs() : undefined,
+  ];
+  if (filter.q) {
+    const term = `%${filter.q.replace(/[%_\\]/g, "\\$&")}%`;
+    where.push(
+      or(
+        ilike(transportJobs.number, term),
+        sql`${qualified(transportJobs.customerId)} in (select ${qualified(schema.users.id)} from ${schema.users} where ${qualified(schema.users.name)} ilike ${term} or ${qualified(schema.users.email)} ilike ${term})`,
+        sql`${qualified(transportJobs.courierId)} in (select ${qualified(couriers.id)} from ${couriers} where ${qualified(couriers.name)} ilike ${term})`,
+      ),
+    );
+  }
+  // Filter with a plain select (the raw SQL above names tables directly), then load the details.
+  const ids = (
+    await db.select({ id: transportJobs.id }).from(transportJobs).where(and(...where)).orderBy(desc(transportJobs.createdAt)).limit(100)
+  ).map((r) => r.id);
+  if (!ids.length) return [];
+  const jobs = await db.query.transportJobs.findMany({
+    where: inArray(transportJobs.id, ids),
+    orderBy: desc(transportJobs.createdAt),
+    limit: 100,
+    with: {
+      customer: { columns: { id: true, name: true, email: true } },
+      courier: { columns: { id: true, name: true, phone: true } },
+      offers: { orderBy: asc(transportOffers.priceCents), with: { courier: { columns: { id: true, name: true, phone: true } } } },
+    },
+  });
+  // The courier's rating for each finished job
+  const ratings = jobs.length
+    ? await db
+        .select({ jobId: schema.reviews.transportJobId, rating: schema.reviews.rating, comment: schema.reviews.comment })
+        .from(schema.reviews)
+        .where(inArray(schema.reviews.transportJobId, jobs.map((j) => j.id)))
+    : [];
+  return jobs.map((j) => ({ ...j, review: ratings.find((r) => r.jobId === j.id) ?? null }));
+}
+
+/** An admin cancels a fake, abusive or duplicate request; the customer and any booked courier are told why. */
+export async function adminCancelJob(jobId: string, reason: string) {
+  if (reason.trim().length < 3) throw new TransportError("Give a reason; it's sent to the people involved.");
+  const job = await db.query.transportJobs.findFirst({ where: eq(transportJobs.id, jobId), with: { courier: true } });
+  if (!job || (job.status !== "open" && job.status !== "booked")) throw new TransportError("Only open or booked requests can be cancelled.");
+  await db.update(transportJobs).set({ status: "cancelled" }).where(eq(transportJobs.id, job.id));
+  await db.update(transportOffers).set({ status: "declined" }).where(and(eq(transportOffers.jobId, job.id), eq(transportOffers.status, "offered")));
+  const notice = { title: `${job.number} was cancelled by MyPlug`, body: reason.trim().slice(0, 300) };
+  await notify([job.customerId], { ...notice, href: `/transport/jobs/${job.id}` }, { email: true });
+  if (job.courier) await notify([job.courier.userId], { ...notice, href: `/courier/transport/${job.id}` }, { email: true });
+}
+
+/** Every hire car, with its owner and number of bookings. */
+export function adminCars() {
+  return db
+    .select({
+      id: hireCars.id,
+      title: hireCars.title,
+      seats: hireCars.seats,
+      dailyCents: hireCars.dailyCents,
+      driverDailyCents: hireCars.driverDailyCents,
+      location: hireCars.location,
+      imageUrl: hireCars.imageUrl,
+      isActive: hireCars.isActive,
+      courierId: couriers.id,
+      courierName: couriers.name,
+      bookings: sql<number>`(select count(*) from ${carBookings} where ${qualified(carBookings.carId)} = ${qualified(hireCars.id)})::int`,
+    })
+    .from(hireCars)
+    .innerJoin(couriers, eq(couriers.id, hireCars.courierId))
+    .orderBy(desc(hireCars.createdAt))
+    .limit(200);
+}
+
+/** An admin hides (or shows again) a hire car; the owner is told why. */
+export async function adminSetCarActive(carId: string, active: boolean, reason: string) {
+  if (!active && reason.trim().length < 3) throw new TransportError("Give a reason; it's sent to the owner.");
+  const car = await db.query.hireCars.findFirst({ where: eq(hireCars.id, carId), with: { courier: { columns: { userId: true } } } });
+  if (!car) throw new TransportError("Car not found.");
+  await db.update(hireCars).set({ isActive: active }).where(eq(hireCars.id, car.id));
+  await notify(
+    [car.courier.userId],
+    active
+      ? { title: `Your ${car.title} is visible to customers again`, body: reason.trim() || undefined, href: "/courier/cars" }
+      : { title: `MyPlug hid your ${car.title}`, body: reason.trim().slice(0, 300), href: "/courier/cars" },
+    { email: true },
+  );
+}
+
+/** Recent and upcoming car hire bookings, with both phone numbers. */
+export function adminBookings() {
+  return db
+    .select({
+      id: carBookings.id,
+      number: carBookings.number,
+      startDate: carBookings.startDate,
+      endDate: carBookings.endDate,
+      withDriver: carBookings.withDriver,
+      totalCents: carBookings.totalCents,
+      status: carBookings.status,
+      contactPhone: carBookings.contactPhone,
+      note: carBookings.note,
+      carTitle: hireCars.title,
+      courierId: couriers.id,
+      courierName: couriers.name,
+      courierPhone: couriers.phone,
+      customerId: schema.users.id,
+      customerName: schema.users.name,
+      createdAt: carBookings.createdAt,
+    })
+    .from(carBookings)
+    .innerJoin(hireCars, eq(hireCars.id, carBookings.carId))
+    .innerJoin(couriers, eq(couriers.id, hireCars.courierId))
+    .innerJoin(schema.users, eq(schema.users.id, carBookings.customerId))
+    .where(gte(carBookings.endDate, new Date(Date.now() - 60 * 86_400_000).toISOString().slice(0, 10)))
+    .orderBy(desc(carBookings.startDate))
+    .limit(200);
+}
+
+/** An admin cancels a booking; the customer and the owner are told why. */
+export async function adminCancelBooking(bookingId: string, reason: string) {
+  if (reason.trim().length < 3) throw new TransportError("Give a reason; it's sent to the people involved.");
+  const b = await db.query.carBookings.findFirst({ where: eq(carBookings.id, bookingId), with: { car: { with: { courier: { columns: { userId: true } } } } } });
+  if (!b || (b.status !== "requested" && b.status !== "confirmed")) throw new TransportError("Only waiting or confirmed bookings can be cancelled.");
+  await db.update(carBookings).set({ status: "cancelled", ownerNote: `Cancelled by MyPlug: ${reason.trim().slice(0, 250)}` }).where(eq(carBookings.id, b.id));
+  const notice = { title: `Car hire ${b.number} was cancelled by MyPlug`, body: reason.trim().slice(0, 300) };
+  await notify([b.customerId], { ...notice, href: "/account/transport" }, { email: true });
+  await notify([b.car.courier.userId], { ...notice, href: "/courier/cars" }, { email: true });
 }

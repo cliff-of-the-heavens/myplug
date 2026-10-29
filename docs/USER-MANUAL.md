@@ -456,6 +456,19 @@ plan is the default for every store. Approve or reject **plan requests** after c
 repeating an alert, and the minimum discount for discount alerts; pause a store's alerts; preview sent
 emails.
 
+### Transport
+
+**Admin → Transport** shows the last 30 days of rides, moves, parcel runs and car hire. The **Transport**
+menu badge counts requests that have waited over 2 hours without a single offer; tap the yellow card to see
+them.
+
+- **Requests:** filter by type and status, or search by reference (TR-…), customer or courier. Open a request
+  to see the details, every offer, both phone numbers and the customer's rating. **Cancel request** (with a
+  reason) for fake, abusive or duplicate requests; the customer and any booked courier are told why.
+- **Car hire:** **Hide car** (with a reason sent to the owner) for misleading photos, wrong prices or reported
+  cars, and **Show again** later. **Cancel booking** (with a reason) tells both the customer and the owner.
+- To suspend a courier, use **Couriers**; courier names here link there.
+
 ### Moderation and reviews
 
 - **Moderation:** reported images, listings and stores. Remove, restore, dismiss, or suspend the owner.

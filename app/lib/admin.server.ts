@@ -3,6 +3,7 @@ import { db, schema } from "~/db/client.server";
 import type { SessionUser } from "./auth.server";
 import { bannerCounts } from "./banners.server";
 import { pendingBandPayments } from "./bands.server";
+import { unansweredJobs } from "./transport.server";
 import { str } from "./utils";
 
 const { users, stores, promotions, reports } = schema;
@@ -26,12 +27,14 @@ export async function getAdminCounts() {
     db.select({ n: sql<number>`count(*)::int` }).from(schema.couriers).where(eq(schema.couriers.status, "pending")),
     db.select({ n: sql<number>`count(*)::int` }).from(schema.businessLicenses).where(eq(schema.businessLicenses.status, "pending")),
   ]);
-  const [[flagged], [flaggedVotes], banners, bandPayments] = await Promise.all([
+  const [[flagged], [flaggedVotes], banners, bandPayments, [unanswered]] = await Promise.all([
     db.select({ n: sql<number>`count(*)::int` }).from(schema.reviews).where(eq(schema.reviews.status, "flagged")),
     // Handyman comments are checked on the same admin page as reviews.
     db.select({ n: sql<number>`count(*)::int` }).from(schema.storeVotes).where(eq(schema.storeVotes.status, "flagged")),
     bannerCounts(),
     pendingBandPayments(),
+    // Transport requests nobody has offered on yet
+    db.select({ n: sql<number>`count(*)::int` }).from(schema.transportJobs).where(unansweredJobs()),
   ]);
   return {
     pendingMerchants: merchants.pending,
@@ -41,6 +44,7 @@ export async function getAdminCounts() {
     pendingCouriers: pendingCouriers.n,
     pendingLicenses: pendingLicenses.n,
     flaggedReviews: flagged.n + flaggedVotes.n,
+    unansweredTransport: unanswered.n,
     banners,
     bandPayments,
   };

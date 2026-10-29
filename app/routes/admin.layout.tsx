@@ -1,6 +1,7 @@
 import {
   BellRingIcon,
   BikeIcon,
+  CarFrontIcon,
   ChartColumnIcon,
   FlagIcon,
   HardDriveIcon,
@@ -32,6 +33,7 @@ export default function AdminLayout({ loaderData }: Route.ComponentProps) {
     { to: "/admin/analytics", label: "Analytics", icon: ChartColumnIcon },
     { to: "/admin/merchants", label: "Merchants", icon: StoreIcon, badge: counts.pendingMerchants + counts.pendingLicenses },
     { to: "/admin/couriers", label: "Couriers", icon: BikeIcon, badge: counts.pendingCouriers },
+    { to: "/admin/transport", label: "Transport", icon: CarFrontIcon, badge: counts.unansweredTransport },
     { to: "/admin/customers", label: "Customers", icon: UsersIcon },
     { to: "/admin/ads", label: "Product boosts", icon: MegaphoneIcon, end: true, badge: counts.adsToQuote + counts.paymentsToVerify },
     { to: "/admin/ads/settings", label: "Boost bands & payment", icon: SettingsIcon },

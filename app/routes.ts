@@ -94,6 +94,7 @@ export default [
       index("routes/admin.index.tsx"),
       route("merchants", "routes/admin.merchants.tsx"),
       route("couriers", "routes/admin.couriers.tsx"),
+      route("transport", "routes/admin.transport.tsx"),
       route("customers", "routes/admin.customers.tsx"),
       route("users/:id", "routes/admin.user.tsx"),
       route("ads", "routes/admin.ads.tsx"),
