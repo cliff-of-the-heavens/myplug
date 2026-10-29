@@ -6,7 +6,7 @@ import { isDateStr, today } from "./dates";
 import { notify } from "./notify.server";
 import { referenceNumber } from "./orders.server";
 import { courierRatings } from "./reviews.server";
-import { daysBetween, TRANSPORT_LABEL } from "./transport";
+import { daysBetween, TRANSPORT_LABEL, UNANSWERED_HOURS } from "./transport";
 
 const { transportJobs, transportOffers, hireCars, carBookings, couriers } = schema;
 
@@ -412,9 +412,6 @@ export async function customerBookings(customerId: string) {
 }
 
 // ---------------------------------------------------------------- admin
-
-/** Open requests this old with no live offer count as unanswered (the admin nav badge). */
-export const UNANSWERED_HOURS = 2;
 
 /** Open requests nobody has offered on after UNANSWERED_HOURS. */
 export const unansweredJobs = () =>

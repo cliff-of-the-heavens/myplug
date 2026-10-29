@@ -39,3 +39,6 @@ export const BOOKING_STATUS = {
   cancelled: { label: "Cancelled", tone: "muted" },
   completed: { label: "Done", tone: "muted" },
 } as const;
+
+/** Open requests this old with no live offer count as unanswered (the admin nav badge). */
+export const UNANSWERED_HOURS = 2;
