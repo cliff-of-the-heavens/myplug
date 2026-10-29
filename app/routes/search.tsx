@@ -13,6 +13,8 @@ import { FEATURE_FLAGS, LISTING_TYPES } from "~/lib/property";
 import { AutoFilterFields, autoFiltersFromParams } from "~/components/auto-filters";
 import { AUTO_CATEGORY_SLUG } from "~/lib/auto";
 import { HANDYMAN_GROUP } from "~/lib/handyman";
+import { isItemCondition, ITEM_CONDITIONS, type ItemCondition } from "~/lib/condition";
+import { ConditionInfoButton } from "~/components/condition-guide";
 import { Button } from "~/components/ui/button";
 import { StickySubmenu, SUBMENU_CHIP } from "~/components/site-header";
 import type { Route } from "./+types/search";
@@ -61,20 +63,24 @@ export async function loader({ request }: Route.LoaderArgs) {
   const titleDeed = kind === "property" && url.searchParams.get("deed") === "1";
   // Vehicle and spare-part filters, on the Auto category only
   const auto = category === AUTO_CATEGORY_SLUG ? autoFiltersFromParams(url.searchParams) : null;
+  // Item condition; "new" means either kind of brand new
+  const conditionParam = url.searchParams.get("condition") ?? "";
+  const condition: ItemCondition | "new" | "" = kind === "product" && !auto && (conditionParam === "new" || isItemCondition(conditionParam)) ? conditionParam : "";
+  const conditions = condition === "new" ? (["new_with_tags", "new_without_tags"] as const) : condition ? [condition] : undefined;
 
   // Services leave out the trades (they have the Handymen tab); a typed search with no tab looks everywhere.
   const searchGroup = group ?? (kind === "service" && !category ? null : undefined);
-  const products = await searchProducts({ q, categorySlug: category, group: searchGroup, sort: sort === "top-voted" && !group ? "featured" : sort, kind, inStockOnly: inStock && kind === "product", listingType, features, titleDeed, auto: auto ?? undefined });
+  const products = await searchProducts({ q, categorySlug: category, group: searchGroup, sort: sort === "top-voted" && !group ? "featured" : sort, kind, inStockOnly: inStock && kind === "product", listingType, features, titleDeed, auto: auto ?? undefined, conditions: conditions ? [...conditions] : undefined });
   const categories = allCategories.filter((c) => (kind ? c.kind === kind && (c.group ?? null) === group : true));
   const categoryName = categories.find((c) => c.slug === category)?.name;
   const heading = q ? `Results for "${q}"` : (categoryName ?? (group ? "Handymen" : kind === "service" ? "Services" : kind === "digital" ? "Digital downloads" : kind === "property" ? "Real Estate" : "All products"));
 
   const banners = await pageBanners(request, ["category_top", "sidebar"]);
-  return { products, categories, q, category, group, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto };
+  return { products, categories, q, category, group, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto, condition };
 }
 
 export default function Search({ loaderData }: Route.ComponentProps) {
-  const { products, categories, q, category, group, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto } = loaderData;
+  const { products, categories, q, category, group, sort, inStock, heading, kind, banners, listingType, features, titleDeed, auto, condition } = loaderData;
   const submit = useSubmit();
 
   const chip = (to: string, label: string, active: boolean, Icon?: typeof CarIcon) => (
@@ -173,6 +179,23 @@ export default function Search({ loaderData }: Route.ComponentProps) {
                 </label>
               ))}
             </>
+          ) : null}
+          {kind === "product" && !auto ? (
+            <span className="flex items-center gap-1">
+              <label className="flex items-center gap-2 text-sm">
+                Condition
+                <NativeSelect name="condition" defaultValue={condition} className="w-auto">
+                  <option value="">Any</option>
+                  <option value="new">Brand new (all)</option>
+                  {ITEM_CONDITIONS.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </label>
+              <ConditionInfoButton audience="buyer" current={condition && condition !== "new" ? condition : null} />
+            </span>
           ) : null}
           {kind !== "service" && kind !== "digital" && kind !== "property" ? (
             <label className="flex items-center gap-2 text-sm">

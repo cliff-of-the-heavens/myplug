@@ -76,6 +76,8 @@ Fashion...; under Handymen: the trades, such as Plumbing or Electronics repair).
 
 - Use the main menu and subcategory chips, or type in the search box.
 - **Sort** by featured, price or newest; tick **In stock only** for products.
+- **Condition:** show only brand new, or only one condition such as **Fairly used**. Tap the **i** next to
+  it to read what each condition means.
 - **Auto:** choose **Vehicles** to filter by make, model, year, mileage, gearbox, fuel and body type, or
   **Spare parts** to filter by part category and find **parts that fit my vehicle** (make, model, year).
   You can also type a **part number** in the search box, with or without dashes.
@@ -87,7 +89,8 @@ Fashion...; under Handymen: the trades, such as Plumbing or Electronics repair).
 Each listing shows photos (tap thumbnails to see more), price, the seller, the seller's rating and
 **Registered business** badge (if verified), ratings and reviews, and:
 
-- **Products:** quantity, **Add to cart** or **Buy now**, or **Deliver on repeat** (e.g. daily bread).
+- **Products:** quantity, **Add to cart** or **Buy now**, or **Deliver on repeat** (e.g. daily bread). The
+  item's **condition** is shown next to the stock; tap the **i** to see what it means.
 - **Services:** an availability calendar and **Book**.
 - **Downloads:** a free preview and price options (download, or watch/read online, sometimes time-limited).
 - **Property:** see [Making an offer on property](#making-an-offer-on-property).
@@ -272,12 +275,28 @@ plan: existing listings stay, but you can't add more beyond the free limit. Arch
 
 | Type | What to fill in |
 | --- | --- |
-| **A product** | Title, description, category, price (and a "was" price to show a deal), stock, photos |
+| **A product** | Title, description, category, condition, price (and a "was" price to show a deal), stock, photos |
 | **A service** | Starting price, bookings you can take per day, references and past work, portfolio photos |
 | **A digital product** | Kind of file, the full file, an optional free preview, and price options |
 | **Real Estate** | See below |
 
 **Photos:** one main photo plus extra photos (the number is set by MyPlug). Drag and drop several at once.
+
+**Condition:** choose one for every second-hand or new item. Tap **Which one should I choose?** for the full
+guide. If you're unsure between two, choose the lower one, and show any wear or fault in the photos and
+description. Choose **Doesn't apply** for food and similar items. Vehicles and parts use the condition in
+the Auto section instead.
+
+| Condition | Means |
+| --- | --- |
+| Brand new, with tags | Never used; sealed box or packaging, or shop tags attached |
+| Brand new, no tags | Never used or worn, but tags, seal or box missing, or opened to check |
+| Mint | Used, but looks and works like new: no marks, nothing missing |
+| Fairly used | Light use, works perfectly; small marks only seen up close |
+| Used | Clearly used, works as it should; visible wear |
+| Fair | Heavy use; works, with visible damage or small faults |
+| Not working | Doesn't work properly; may be repairable (say what's wrong) |
+| For parts | Only for parts or materials; not expected to work |
 
 **Item location:** products are shown at your business address (from **Business info**) unless you choose
 **Somewhere else** and list one or more places, e.g. two branches. Locations appear only on the item's own

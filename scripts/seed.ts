@@ -131,6 +131,8 @@ async function main() {
           compareAtCents: was,
           quantity: qty,
           trackStock: title !== "Homemade rusks 1kg", // made continuously: always in stock
+          // Brand new, except beauty and food where condition doesn't apply
+          condition: cat === "beauty" || cat === "groceries" ? null : "new_with_tags",
           imageUrl: `https://picsum.photos/seed/${encodeURIComponent(title)}/600/600`,
         })
         .returning();

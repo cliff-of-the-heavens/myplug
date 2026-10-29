@@ -4,6 +4,7 @@ import type { ProductCardData } from "~/lib/catalog.server";
 import { money, stockLabel } from "~/lib/format";
 import { LISTING_BADGE, priceSuffix, soldWord } from "~/lib/property";
 import { autoSummary } from "~/lib/auto";
+import { conditionInfo } from "~/lib/condition";
 import { cn } from "~/lib/utils";
 import { DealCountdown, priceDisplay } from "./price";
 import { VoteBadge } from "./handyman-votes";
@@ -82,6 +83,7 @@ export function ProductCard({ product, className }: { product: ProductCardData; 
           {product.isTradesperson ? <VoteBadge summary={{ up: product.votesUp ?? 0, down: product.votesDown ?? 0 }} /> : null}
         </p>
         {product.autoDetails ? <p className="truncate text-xs text-muted-foreground">{autoSummary(product.autoDetails)}</p> : null}
+        {product.condition ? <p className="truncate text-xs font-medium text-muted-foreground">{conditionInfo(product.condition).label}</p> : null}
         {product.kind === "property" && product.propertyFeatures ? (
           <p className="truncate text-xs text-muted-foreground">
             {[

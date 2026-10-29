@@ -29,6 +29,7 @@ import { ProductShelf, VerifiedTick } from "~/components/product-card";
 import { ReportButton } from "~/components/report-button";
 import { SafeImage } from "~/components/safe-image";
 import { Badge } from "~/components/ui/badge";
+import { ConditionBadge } from "~/components/condition-guide";
 import { Button } from "~/components/ui/button";
 import { Field, Input, NativeSelect, Textarea } from "~/components/ui/input";
 import { db, schema } from "~/db/client.server";
@@ -647,6 +648,7 @@ export default function ProductPage({ loaderData, actionData }: Route.ComponentP
                 {stock.text}
               </Badge>
             )}
+            {product.condition ? <ConditionBadge condition={product.condition} /> : null}
           </div>
           ) : null}
           {sale && !loaderData.property ? (

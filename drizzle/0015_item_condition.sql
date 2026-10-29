@@ -1,0 +1,2 @@
+CREATE TYPE "public"."item_condition" AS ENUM('new_with_tags', 'new_without_tags', 'mint', 'fairly_used', 'used', 'fair', 'not_working', 'for_parts');--> statement-breakpoint
+ALTER TABLE "products" ADD COLUMN "condition" "item_condition";

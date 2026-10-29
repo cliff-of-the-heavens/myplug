@@ -57,6 +57,8 @@ export const storeStatus = pgEnum("store_status", [
 
 /** Physical goods are ordered; services (DJs, decor, cakes...) are booked for a date. */
 export const productKind = pgEnum("product_kind", ["product", "service", "digital", "property"]);
+/** Physical items: brand new to "for parts" (labels and meanings in lib/condition.ts). */
+export const itemCondition = pgEnum("item_condition", CONDITION_VALUES);
 
 /** Digital products: what kind of file is sold. */
 export const mediaType = pgEnum("media_type", ["video", "audio", "document"]);
@@ -257,6 +259,7 @@ export const products = pgTable(
     soldAt: timestamp("sold_at", { withTimezone: true }), // property sold or let to the accepted offer
     // Where the item can be seen or collected; empty means the store's physical address
     locations: text("locations").array().notNull().default(sql`'{}'::text[]`),
+    condition: itemCondition("condition"), // physical items; null when it doesn't apply (food, vehicles use autoDetails)
     ...timestamps,
   },
   (t) => [
@@ -924,6 +927,7 @@ export const adFreePasses = pgTable("ad_free_passes", {
 
 export type { AutoDetails } from "../lib/auto";
 import type { AutoDetails } from "../lib/auto";
+import { CONDITION_VALUES } from "../lib/condition";
 export type ListingType = "land" | "house" | "rental";
 export type PriceType = "negotiable" | "fixed" | "reserve";
 export type PropertyFeatures = {

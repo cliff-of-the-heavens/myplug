@@ -14,6 +14,8 @@ import { db, schema } from "~/db/client.server";
 import { alertType as alertTypeEnum, mediaType as mediaTypeEnum, type AlertType, type ListingType, type MediaType, type PriceType, type ProductKind, type PropertyFeatures } from "~/db/schema";
 import { PropertyFields } from "~/components/property-fields";
 import { AutoFields } from "~/components/auto-fields";
+import { ConditionField } from "~/components/condition-guide";
+import { isItemCondition } from "~/lib/condition";
 import { AUTO_CATEGORY_SLUG, autoFromForm, type AutoDetails } from "~/lib/auto";
 import { assertCanAddListing, BandError, maxPhotos, storePlan } from "~/lib/bands.server";
 import { featuresFromForm, LISTING_TYPES, needsTitleDeed, PRICE_TYPES } from "~/lib/property";
@@ -218,6 +220,8 @@ export async function action({ request, params }: Route.ActionArgs) {
     references: kind === "service" ? str(form.get("references")).slice(0, 3000) || null : null,
     // Physical products: empty means "at the store's address"
     locations: kind === "product" ? parseLocations(form.getAll("locations")) : [],
+    // Physical items only; vehicles and spare parts give theirs in the Auto details
+    condition: kind === "product" && !autoDetails && isItemCondition(str(form.get("condition"))) ? (str(form.get("condition")) as typeof schema.products.$inferInsert.condition) : null,
     isActive: form.get("isActive") === "on",
     // A new image replaces the old one and clears any moderation hide
     ...(imageUrl ? { imageUrl, imageHidden: false } : {}),
@@ -355,7 +359,11 @@ export default function ProductForm({ loaderData, actionData }: Route.ComponentP
                   ))}
                 </NativeSelect>
               </Field>
-              {kind === "product" && categories.find((c) => c.id === categoryId)?.slug === AUTO_CATEGORY_SLUG ? <AutoFields d={product?.autoDetails ?? null} /> : null}
+              {kind === "product" && categories.find((c) => c.id === categoryId)?.slug === AUTO_CATEGORY_SLUG ? (
+                <AutoFields d={product?.autoDetails ?? null} />
+              ) : kind === "product" ? (
+                <ConditionField initial={product?.condition ?? null} />
+              ) : null}
               {isProperty ? (
                 <PropertyFields
                   currency={currency}

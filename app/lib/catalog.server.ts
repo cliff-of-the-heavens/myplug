@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gt, ilike, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
 import type { ListingType, ProductKind, PromotionTier } from "~/db/schema";
+import type { ItemCondition } from "./condition";
 import { FEATURE_FLAGS } from "./property";
 import { cached } from "./cache.server";
 import { qualified } from "~/db/sql";
@@ -95,6 +96,7 @@ const cardColumns = {
   soldAt: products.soldAt,
   propertyFeatures: products.propertyFeatures,
   autoDetails: products.autoDetails,
+  condition: products.condition,
 };
 
 export type ProductCardData = Omit<
@@ -221,6 +223,8 @@ export async function searchProducts(opts: {
   features?: string[];
   titleDeed?: boolean;
   auto?: AutoFilters;
+  /** Physical items in any of these conditions. */
+  conditions?: ItemCondition[];
   sort?: SortKey;
   limit?: number;
 }) {
@@ -260,6 +264,7 @@ export async function searchProducts(opts: {
   }
   if (opts.titleDeed) filters.push(eq(products.titleDeed, true));
   if (opts.auto) filters.push(...autoFilterSql(opts.auto));
+  if (opts.conditions?.length) filters.push(inArray(products.condition, opts.conditions));
 
   const order = {
     featured: weightedRandom,
