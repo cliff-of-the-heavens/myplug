@@ -182,6 +182,9 @@ Open **Transport** in the main menu. The drivers and couriers there are register
 
 ### Hiring a handyman
 
+- **Handymen near you** on the home page lists handymen who work where you are: your saved delivery
+  address if you're signed in, or type your town or area in the strip. If none work there yet, it shows
+  the top-voted ones.
 - **Post a job:** on the **Handymen** tab tap **Post a job** (or choose a trade on **Post a request**). Say
   what needs doing and the area (not your full address), and add a photo if it helps. Every approved
   handyman in that trade is told straight away and messages you with a quote.
@@ -237,6 +240,8 @@ banner strips, search banners and side banners. It starts once an admin confirms
 4. **Profile**: add a photo, describe your work, update your trades and area, and list **references** (past
    clients customers can check). Add each service you offer as a listing (call-out fee, per job or per
    metre) with photos of past work; the photos also make up the **Past work** gallery on your profile.
+   Write the towns and areas you cover in **Where you work**: the home page's **Handymen near you** strip
+   matches customers' areas against it.
 5. **Jobs in my trades** lists open jobs customers posted in your trades; you're notified of each new one.
    Open a job and reply to quote.
 6. **Reviews & votes** shows star reviews from bookings and the community's up/down votes. Reply publicly,

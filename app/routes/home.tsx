@@ -4,19 +4,26 @@ import {
   HouseIcon,
   ImagePlusIcon,
   MegaphoneIcon,
+  MapPinIcon,
   MessageCircleIcon,
   PartyPopperIcon,
   ShieldCheckIcon,
   SparklesIcon,
   TruckIcon,
+  WrenchIcon,
 } from "lucide-react";
-import { Link, useRouteLoaderData } from "react-router";
+import { Form, Link, useRouteLoaderData } from "react-router";
 import { CategoryIcon, TILE_COLORS } from "~/components/category-icon";
 import { Container } from "~/components/page";
-import { ProductGrid, ProductShelf } from "~/components/product-card";
+import { VoteBadge } from "~/components/handyman-votes";
+import { ProductGrid, ProductShelf, VerifiedTick } from "~/components/product-card";
+import { SafeImage } from "~/components/safe-image";
 import { Button } from "~/components/ui/button";
 import { schema } from "~/db/client.server";
+import { getUser } from "~/lib/auth.server";
 import { getDeals, getFeed, getProperties, getServices, getSponsored } from "~/lib/catalog.server";
+import { HANDYMAN_GROUP } from "~/lib/handyman";
+import { handymenNear, placeOf } from "~/lib/handymen.server";
 import { useOptionalUser } from "~/lib/hooks";
 import type { loader as rootLoader } from "~/root";
 import { BannerSlot, HeroCarousel, TopShopsPanel } from "~/components/banner-ads";
@@ -25,7 +32,9 @@ import type { Route } from "./+types/home";
 
 export async function loader({ request }: Route.LoaderArgs) {
   const settings = await bannerSettings();
-  const [sponsored, deals, feed, services, banners, shops, properties] = await Promise.all([
+  // "Handymen near you": the town typed in the strip, else the visitor's saved address
+  const near = new URL(request.url).searchParams.get("near")?.trim().slice(0, 100) || (await placeOf((await getUser(request))?.id));
+  const [sponsored, deals, feed, services, banners, shops, properties, handymen] = await Promise.all([
     getSponsored(10),
     getDeals(10),
     getFeed(30, eq(schema.products.kind, "product")),
@@ -33,8 +42,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     pageBanners(request, ["hero", "home_banner"]),
     topShops(settings.heroPanel),
     getProperties(10),
+    handymenNear(near || null),
   ]);
-  return { sponsored, deals, feed, services, banners, shops, properties, heroPanel: settings.heroPanel };
+  return { sponsored, deals, feed, services, banners, shops, properties, handymen, heroPanel: settings.heroPanel };
 }
 
 // The feed is randomised per visit, so don't let CDNs cache it.
@@ -131,8 +141,67 @@ function Section({
   );
 }
 
+type NearbyHandymen = Route.ComponentProps["loaderData"]["handymen"];
+
+/** Tradespeople who work where the visitor is, as a scrolling row of profile cards. */
+function HandymenNearYou({ data }: { data: NearbyHandymen }) {
+  const { place, nearby, handymen } = data;
+  return (
+    <Section title="Handymen near you" href={`/search?group=${HANDYMAN_GROUP}`} icon={<WrenchIcon className="size-5 text-primary" />}>
+      <div className="grid gap-4">
+        <Form method="get" preventScrollReset className="flex flex-wrap items-center gap-2 text-sm">
+          <MapPinIcon className="size-4 text-muted-foreground" />
+          <span className="text-muted-foreground">
+            {place ? (nearby ? `Working in ${place}:` : `None listed for ${place} yet, so here are the top-voted:`) : "Where are you?"}
+          </span>
+          <input
+            name="near"
+            defaultValue={place ?? ""}
+            key={place ?? ""}
+            placeholder="Town or area, e.g. Area 47, Lilongwe"
+            aria-label="Your town or area"
+            className="h-8 w-56 rounded-full border bg-background px-3 text-sm"
+          />
+          <button type="submit" className="font-semibold text-primary hover:underline">
+            {place ? "Change" : "Show"}
+          </button>
+        </Form>
+        <div className="scrollbar-none -mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2 md:gap-4">
+          {handymen.map((h) => (
+            <Link
+              key={h.id}
+              to={`/s/${h.slug}`}
+              className="relative grid w-56 shrink-0 snap-start content-start gap-2 rounded-2xl border bg-card p-4 transition-shadow hover:shadow-md"
+            >
+              {h.verified ? <VerifiedTick className="absolute top-3 right-3 size-6 [&_svg]:size-4" /> : null}
+              <SafeImage src={h.logoUrl} alt={h.name} className="size-14 rounded-full border" imgClassName="rounded-full" />
+              <p className="line-clamp-2 pr-6 font-bold leading-snug">{h.name}</p>
+              {h.trades.length ? (
+                <div className="flex flex-wrap gap-1">
+                  {h.trades.slice(0, 3).map((t) => (
+                    <span key={t} className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {h.serviceArea ? (
+                <p className="flex items-start gap-1 text-xs text-muted-foreground">
+                  <MapPinIcon className="mt-0.5 size-3.5 shrink-0" />
+                  <span className="line-clamp-2">{h.serviceArea}</span>
+                </p>
+              ) : null}
+              <VoteBadge summary={h.votes} />
+            </Link>
+          ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { sponsored, deals, feed, services, banners, shops, properties, heroPanel } = loaderData;
+  const { sponsored, deals, feed, services, banners, shops, properties, handymen, heroPanel } = loaderData;
   const root = useRouteLoaderData<typeof rootLoader>("root");
   const productCategories = root?.categories.filter((c) => c.kind === "product") ?? [];
   const serviceCategories = root?.categories.filter((c) => c.kind === "service") ?? [];
@@ -183,6 +252,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           {services.length ? <ProductShelf products={services} /> : null}
         </div>
       </Section>
+
+      {handymen.handymen.length ? <HandymenNearYou data={handymen} /> : null}
 
       <Section title="Real Estate" href="/search?kind=property" icon={<HouseIcon className="size-5 text-primary" />}>
         <div className="grid gap-4">
