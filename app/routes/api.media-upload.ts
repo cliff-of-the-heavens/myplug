@@ -17,7 +17,7 @@ export async function action({ request }: Route.ActionArgs) {
       body,
       onBeforeGenerateToken: async (pathname) => {
         // Full files only under private/media/, previews only under previews/.
-        if (!/^(private\/media|previews)\/[\w-]+\.[a-z0-9]+$/i.test(pathname)) throw new Error("Invalid upload path");
+        if (!/^(private\/media|previews)\/\d{4}\/\d{2}\/[0-9a-f]{2}\/[\w-]+\.[a-z0-9]+$/i.test(pathname)) throw new Error("Invalid upload path");
         return {
           allowedContentTypes: Object.values(MEDIA_TYPES).flat(),
           maximumSizeInBytes: pathname.startsWith("previews/") ? 200 * 1024 * 1024 : MAX_MEDIA_BYTES,

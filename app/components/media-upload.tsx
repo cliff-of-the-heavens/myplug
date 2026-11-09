@@ -1,5 +1,6 @@
 import { CheckCircle2Icon, UploadCloudIcon } from "lucide-react";
 import { useState } from "react";
+import { storagePath } from "~/lib/storage-paths";
 import { cn } from "~/lib/utils";
 
 /**
@@ -35,7 +36,7 @@ export function MediaUploadField({
       const { upload } = await import("@vercel/blob/client");
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "bin";
       const folder = visibility === "private" ? "private/media" : "previews";
-      const blob = await upload(`${folder}/${crypto.randomUUID()}.${ext}`, file, {
+      const blob = await upload(storagePath(folder, ext), file, {
         access: visibility,
         handleUploadUrl: "/api/media-upload",
         multipart: file.size > 50 * 1024 * 1024,

@@ -5,7 +5,8 @@ import type { MediaType } from "~/db/schema";
 import { MEDIA_TYPES } from "./digital";
 import { parseMoney } from "./format";
 import { notify } from "./notify.server";
-import { storeFile, storePrivateFile, StorageError } from "./storage.server";
+import { storagePath } from "./storage-paths";
+import { mimeFor, registerStoredFile, storeFile, storePrivateFile, StorageError } from "./storage.server";
 
 const { digitalOffers, digitalGrants, products, orders, orderEvents } = schema;
 
@@ -42,14 +43,16 @@ export async function saveDigital(
 
   // Full file: either already uploaded straight to private Blob storage, or sent with the form.
   if (input.mediaKey) {
-    if (!/^blob:private\/media\/[\w-]+\.[a-z0-9]+$/i.test(input.mediaKey)) throw new DigitalError("Invalid media upload.");
+    if (!/^blob:private\/media\/(\d{4}\/\d{2}\/[0-9a-f]{2}\/)?[\w-]+\.[a-z0-9]+$/i.test(input.mediaKey)) throw new DigitalError("Invalid media upload.");
     update.mediaKey = input.mediaKey;
     update.mediaName = input.mediaKey.split("/").pop() ?? null;
+    const name = input.mediaKey.slice("blob:private/".length);
+    await registerStoredFile({ backend: "blob", visibility: "private", name, ref: input.mediaKey, contentType: mimeFor(name) });
   } else if (input.mediaFile && typeof input.mediaFile !== "string" && input.mediaFile.size > 0) {
     if (!allowed.includes(input.mediaFile.type)) throw new DigitalError(`That file type isn't allowed for ${input.mediaType}.`);
     try {
       const ext = input.mediaFile.name.split(".").pop()?.toLowerCase() ?? "bin";
-      update.mediaKey = await storePrivateFile(`media/${crypto.randomUUID()}.${ext}`, input.mediaFile);
+      update.mediaKey = await storePrivateFile(storagePath("media", ext), input.mediaFile);
       update.mediaName = input.mediaFile.name.slice(0, 120);
     } catch (e) {
       if (e instanceof StorageError) throw new DigitalError(e.message);
@@ -61,11 +64,13 @@ export async function saveDigital(
   if (input.previewUrl) {
     if (!/^https:\/\/[\w.-]+\.public\.blob\.vercel-storage\.com\/previews\//.test(input.previewUrl)) throw new DigitalError("Invalid preview upload.");
     update.previewUrl = input.previewUrl;
+    const name = decodeURIComponent(new URL(input.previewUrl).pathname.slice(1));
+    await registerStoredFile({ backend: "blob", visibility: "public", name, ref: input.previewUrl, contentType: mimeFor(name) });
   } else if (input.previewFile && typeof input.previewFile !== "string" && input.previewFile.size > 0) {
     if (!allowed.includes(input.previewFile.type)) throw new DigitalError("The preview must be the same kind of file.");
     try {
       const ext = input.previewFile.name.split(".").pop()?.toLowerCase() ?? "bin";
-      update.previewUrl = await storeFile(`previews/${crypto.randomUUID()}.${ext}`, input.previewFile as File);
+      update.previewUrl = await storeFile(storagePath("previews", ext), input.previewFile as File);
     } catch (e) {
       if (e instanceof StorageError) throw new DigitalError(e.message);
       throw e;

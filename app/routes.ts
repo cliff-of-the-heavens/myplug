@@ -24,6 +24,8 @@ export default [
 
   // Auth
   route("login", "routes/login.tsx"),
+  route("login/verify", "routes/login.verify.tsx"),
+  route("account/security", "routes/account.security.tsx"),
   route("register", "routes/register.tsx"),
   route("forgot-password", "routes/forgot-password.tsx"),
   route("reset-password", "routes/reset-password.tsx"),
@@ -122,6 +124,7 @@ export default [
   route("api/vote", "routes/api.vote.ts"),
   route("api/cart", "routes/api.cart.ts"),
   route("api/media-upload", "routes/api.media-upload.ts"),
+  route("api/admin/storage-copy", "routes/api.admin.storage-copy.ts"),
   route("files/:type/:id", "routes/files.ts"),
   route("ad/:id", "routes/ad.ts"),
   route("api/t", "routes/api.t.ts"),

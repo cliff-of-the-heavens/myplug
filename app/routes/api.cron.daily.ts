@@ -2,7 +2,9 @@ import { processAlertQueue } from "~/lib/alerts.server";
 import { rollupAnalytics } from "~/lib/analytics.server";
 import { runListingCleanup } from "~/lib/property.server";
 import { runDuePlans } from "~/lib/recurring.server";
+import { purgeOldCodes } from "~/lib/mfa.server";
 import { runRetention } from "~/lib/retention.server";
+import { runCopyBatch } from "~/lib/storage-copy.server";
 import type { Route } from "./+types/api.cron.daily";
 
 /**
@@ -33,5 +35,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     alerts.failed += r.failed;
     if (r.sent + r.skipped + r.failed === 0) break;
   }
-  return Response.json({ plans, retention, listings, analytics, alerts });
+  await purgeOldCodes();
+  // Last, so a slow file server can't hold up the jobs above.
+  const storage = await runCopyBatch({ budgetMs: 45_000, maxFiles: 500 }).catch((e) => ({ error: e instanceof Error ? e.message : String(e) }));
+  return Response.json({ plans, retention, listings, analytics, alerts, storage });
 }

@@ -6,9 +6,9 @@ import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Field, Input } from "~/components/ui/input";
 import { db, schema } from "~/db/client.server";
-import { createUserSession } from "~/lib/auth.server";
 import { MIN_PASSWORD } from "~/lib/password";
 import { findResetToken, PasswordError, resetPassword } from "~/lib/password.server";
+import { finishSignIn } from "~/lib/signin.server";
 import { str } from "~/lib/utils";
 import type { Route } from "./+types/reset-password";
 
@@ -28,10 +28,10 @@ export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   try {
     const userId = await resetPassword(str(form.get("token")), String(form.get("password") ?? ""), String(form.get("confirm") ?? ""));
-    // Signed straight in with a fresh session (all older sessions were signed out).
-    const user = await db.query.users.findFirst({ where: eq(schema.users.id, userId), columns: { role: true } });
-    const home = { merchant: "/sell", admin: "/admin", courier: "/courier", customer: "/" }[user?.role ?? "customer"];
-    return createUserSession(request, userId, home);
+    // Signed in with a fresh session (all older sessions were signed out), after a two-step code if they use one.
+    const user = await db.query.users.findFirst({ where: eq(schema.users.id, userId), columns: { id: true, role: true } });
+    if (!user) return { error: "This account no longer exists." };
+    return finishSignIn(request, user, null);
   } catch (e) {
     if (e instanceof PasswordError) return { error: e.message };
     throw e;

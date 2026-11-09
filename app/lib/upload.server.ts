@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { optimizeImage } from "./image-optimize.server";
+import { storagePath } from "./storage-paths";
 import { StorageError, storeFile, storePrivateFile } from "./storage.server";
 
 // Vercel functions reject request bodies over 4.5 MB, so keep uploads below that.
@@ -44,7 +44,7 @@ async function uploadFile(
   const { file: toStore, ext } = optimize ? await optimizeImage(file, type) : { file, ext: type };
 
   try {
-    return await storeFile(`${folder}/${randomUUID()}.${ext}`, toStore);
+    return await storeFile(storagePath(folder, ext), toStore);
   } catch (e) {
     if (e instanceof StorageError) throw new UploadError(e.message);
     throw e;
@@ -62,7 +62,7 @@ export async function uploadPrivate(file: FormDataEntryValue | null, folder: str
   if (!ext) throw new UploadError(documents ? "Upload a PDF or a photo (JPG, PNG, WebP)." : "Upload a photo (JPG, PNG or WebP).");
   if (file.size > MAX_IMAGE_BYTES) throw new UploadError("Files must be 4 MB or smaller.");
   try {
-    return await storePrivateFile(`${folder}/${randomUUID()}.${ext}`, file);
+    return await storePrivateFile(storagePath(folder, ext), file);
   } catch (e) {
     if (e instanceof StorageError) throw new UploadError(e.message);
     throw e;

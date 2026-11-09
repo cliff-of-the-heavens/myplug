@@ -13,10 +13,19 @@ if (!secret || secret.length < 32) {
 /** A Google/Facebook sign-in in progress: checked when the provider sends the person back. */
 type OAuthState = { state: string; provider: ProviderId; role: string; redirectTo: string; devEmail?: string };
 
+/** Password accepted, waiting for the two-step code. This doesn't sign anyone in. */
+type MfaPending = { userId: string; redirectTo: string; expires: number };
+
+const MFA_PENDING_MINUTES = 15;
+
+/** In production every admin signs in with a code. Local development and the demo stay simple. */
+export const ADMIN_MFA_REQUIRED = process.env.NODE_ENV === "production";
+
 // issuedAt: when this sign-in happened, so changing the password can sign out older sessions.
 // socialPending: a new Google/Facebook user who still has to finish signing up.
+// mfaVerified: this session passed a two-step code.
 const sessionStorage = createCookieSessionStorage<
-  { userId: string; issuedAt: number; oauth: OAuthState; socialPending: PendingSocial },
+  { userId: string; issuedAt: number; oauth: OAuthState; socialPending: PendingSocial; mfaPending: MfaPending; mfaVerified: boolean },
   { flash: string }
 >({
   cookie: {
@@ -145,18 +154,50 @@ export async function requireCourier(request: Request) {
 export async function requireAdmin(request: Request) {
   const user = await requireUser(request);
   if (user.role !== "admin") throw new Response("Admins only.", { status: 403 });
+  if (ADMIN_MFA_REQUIRED) {
+    const session = await getSession(request);
+    // e.g. made an admin after signing in: sign in again, with a code this time.
+    if (!session.get("mfaVerified")) throw redirect("/login", { headers: { "Set-Cookie": await sessionStorage.destroySession(session) } });
+  }
   return user;
 }
 
-export async function createUserSession(request: Request, userId: string, redirectTo: string) {
+export async function createUserSession(request: Request, userId: string, redirectTo: string, { mfaVerified = false } = {}) {
   const session = await getSession(request);
   session.set("userId", userId);
   session.set("issuedAt", Date.now());
+  if (mfaVerified) session.set("mfaVerified", true);
+  else session.unset("mfaVerified");
+  session.unset("mfaPending");
   session.unset("oauth");
   session.unset("socialPending");
   return redirect(safeRedirect(redirectTo), {
     headers: { "Set-Cookie": await sessionStorage.commitSession(session) },
   });
+}
+
+/** The first step of sign-in passed: remembers that, without signing in, and asks for the code. */
+export async function startMfaChallenge(request: Request, pending: Omit<MfaPending, "expires">, flash: Flash | null) {
+  const session = await getSession(request);
+  session.unset("userId");
+  session.unset("issuedAt");
+  session.unset("mfaVerified");
+  session.unset("oauth");
+  session.unset("socialPending");
+  session.set("mfaPending", { ...pending, expires: Date.now() + MFA_PENDING_MINUTES * 60_000 });
+  if (flash) session.flash("flash", JSON.stringify(flash));
+  return redirect("/login/verify", { headers: { "Set-Cookie": await sessionStorage.commitSession(session) } });
+}
+
+export async function getMfaPending(request: Request) {
+  const pending = (await getSession(request)).get("mfaPending");
+  return pending && pending.expires > Date.now() ? pending : null;
+}
+
+export async function cancelMfaChallenge(request: Request) {
+  const session = await getSession(request);
+  session.unset("mfaPending");
+  return redirect("/login", { headers: { "Set-Cookie": await sessionStorage.commitSession(session) } });
 }
 
 export type Flash = { tone: "success" | "warning"; text: string };

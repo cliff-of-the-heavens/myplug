@@ -13,6 +13,7 @@ import { imageSize } from "./image-size.server";
 import { notify, notifyAdmins } from "./notify.server";
 import { referenceNumber } from "./orders.server";
 import { getSettings, intSetting, setSettings } from "./settings.server";
+import { storagePath } from "./storage-paths";
 import { StorageError, storeFile } from "./storage.server";
 import { AD_FREE_PLANS, ASPECT_TOLERANCE, cleanLink, formatList, MAX_WEEKS, MIN_WIDTH_RATIO } from "./banners";
 import { str } from "./utils";
@@ -108,7 +109,7 @@ export async function storeCreative(file: FormDataEntryValue | null, placement: 
     throw new BannerError(`The image is only ${size.width}px wide and would look blurry. Use ${placement.width}×${placement.height}px.`);
   }
   try {
-    const url = await storeFile(`banners/${randomUUID()}.${size.type}`, file);
+    const url = await storeFile(storagePath("banners", size.type), file);
     return { url, width: size.width, height: size.height };
   } catch (e) {
     if (e instanceof StorageError) throw new BannerError(e.message);

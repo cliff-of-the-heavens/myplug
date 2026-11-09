@@ -221,6 +221,11 @@ function AccountMenu({ user }: { user: SessionUser }) {
             <KeyRoundIcon /> Change password
           </Link>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link to="/account/security">
+            <ShieldIcon /> Two-step sign-in
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         {/* Submitted from onSelect: a <form> inside the menu is removed as the menu closes, before it can submit. */}
         <DropdownMenuItem onSelect={() => submit(null, { method: "post", action: "/logout" })}>

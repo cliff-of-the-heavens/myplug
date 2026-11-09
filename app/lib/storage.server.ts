@@ -1,9 +1,13 @@
-import { put } from "@vercel/blob";
+import { get, head, put } from "@vercel/blob";
 import { Client as FtpClient } from "basic-ftp";
+import { and, eq } from "drizzle-orm";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { Readable } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { db, schema } from "~/db/client.server";
 import { getSettings, setSettings } from "./settings.server";
 
 /**
@@ -136,35 +140,111 @@ export async function testFtp(cfg: FtpConfig) {
 
 // ---------------------------------------------------------------- upload
 
-/** Stores a file under `name` (e.g. "products/uuid.jpg") and returns its public URL. */
-export async function storeFile(name: string, file: File) {
-  const { backend, ftp } = await getStorageSettings();
-  const target = resolveBackend(backend);
+export type ActiveBackend = Exclude<StorageBackend, "auto">;
+export type Visibility = "public" | "private";
 
+/** Local private files live outside public/, so the web server never serves them directly. */
+const PRIVATE_DIR = path.join(process.cwd(), ".private-uploads");
+const PUBLIC_DIR = path.join(process.cwd(), "public", "uploads");
+
+function privateFtpRoot(ftp: FtpConfig) {
+  return path.posix.join(path.posix.dirname(ftp.directory.replace(/\/$/, "") || "/"), "myplug-private");
+}
+
+function ftpFolder(ftp: FtpConfig, visibility: Visibility) {
+  return visibility === "public" ? ftp.directory : privateFtpRoot(ftp);
+}
+
+const blobPath = (visibility: Visibility, name: string) => (visibility === "private" ? `private/${name}` : name);
+
+/**
+ * Writes a file to a backend and returns its reference: a public URL, or for private files
+ * a key saying where it lives ("blob:…", "ftp:…" or "local:…").
+ */
+export async function writeToBackend(
+  target: ActiveBackend,
+  visibility: Visibility,
+  name: string,
+  body: File | Blob | Readable,
+  contentType: string,
+  ftp: FtpConfig,
+  { overwrite = false, multipart = false } = {},
+) {
   if (target === "blob") {
     if (!process.env.BLOB_READ_WRITE_TOKEN) throw new StorageError("Vercel Blob is selected but BLOB_READ_WRITE_TOKEN is missing.");
-    const blob = await put(name, file, { access: "public", contentType: file.type });
-    return blob.url;
+    const blob = await put(blobPath(visibility, name), body, { access: visibility, contentType, allowOverwrite: overwrite, multipart });
+    return visibility === "public" ? blob.url : `blob:${blob.pathname}`;
   }
 
   if (target === "ftp") {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const folder = path.posix.dirname(name);
+    const data = body instanceof Readable ? body : Readable.from(Buffer.from(await body.arrayBuffer()));
     await withFtp(ftp, async (client) => {
-      await client.ensureDir(path.posix.join(ftp.directory, folder)); // also changes into it
-      await client.uploadFrom(Readable.from(buffer), path.posix.basename(name));
+      if (visibility === "private") {
+        // Kept outside the public uploads folder, with a deny-all rule for Apache-style hosts.
+        await client.ensureDir(privateFtpRoot(ftp));
+        await client.uploadFrom(Readable.from(["Require all denied\nDeny from all\n"]), ".htaccess");
+      }
+      await client.ensureDir(path.posix.join(ftpFolder(ftp, visibility), path.posix.dirname(name))); // also changes into it
+      await client.uploadFrom(data, path.posix.basename(name));
     });
-    return `${ftp.publicBaseUrl}/${name}`;
+    return visibility === "public" ? `${ftp.publicBaseUrl}/${name}` : `ftp:${name}`;
   }
 
-  if (process.env.VERCEL) {
-    throw new StorageError("File storage is not configured. Choose Vercel Blob or FTP in Admin → System settings.");
+  if (process.env.VERCEL) throw new StorageError("File storage is not configured. Choose Vercel Blob or FTP in Admin → System settings.");
+  const file = path.join(visibility === "public" ? PUBLIC_DIR : PRIVATE_DIR, name);
+  await mkdir(path.dirname(file), { recursive: true });
+  if (body instanceof Readable) await pipeline(body, createWriteStream(file));
+  else await writeFile(file, Buffer.from(await body.arrayBuffer()));
+  return visibility === "public" ? `/uploads/${name}` : `local:${name}`;
+}
+
+type StoredFile = { backend: ActiveBackend; visibility: Visibility; name: string; ref: string };
+
+/** Opens a stored file for reading, wherever it currently lives. */
+export async function openStoredFile(file: StoredFile, ftp: FtpConfig): Promise<Readable> {
+  if (file.backend === "local") {
+    const local = path.join(file.visibility === "public" ? PUBLIC_DIR : PRIVATE_DIR, file.name);
+    await stat(local); // fails straight away if it's missing
+    return createReadStream(local);
   }
-  // Local development fallback
-  const file_ = path.join(process.cwd(), "public", "uploads", name);
-  await mkdir(path.dirname(file_), { recursive: true });
-  await writeFile(file_, Buffer.from(await file.arrayBuffer()));
-  return `/uploads/${name}`;
+
+  if (file.visibility === "public") {
+    const res = await fetch(file.ref);
+    if (!res.ok || !res.body) throw new StorageError(`Couldn't read ${file.ref} (${res.status}).`);
+    return Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]);
+  }
+
+  if (file.backend === "blob") {
+    const result = await get(blobPath("private", file.name), { access: "private" });
+    if (!result?.stream) throw new StorageError(`Private file ${file.name} wasn't found in Vercel Blob.`);
+    return Readable.fromWeb(result.stream as Parameters<typeof Readable.fromWeb>[0]);
+  }
+
+  const sink = new PassThrough();
+  const remote = path.posix.join(privateFtpRoot(ftp), file.name);
+  void withFtp(ftp, (client) => client.downloadTo(sink, remote)).catch((e) => sink.destroy(e));
+  return sink;
+}
+
+/** The size a backend reports for a file, used to confirm a copy arrived whole. */
+export async function storedSize(target: ActiveBackend, visibility: Visibility, name: string, ref: string, ftp: FtpConfig) {
+  if (target === "blob") return (await head(visibility === "public" ? ref : blobPath(visibility, name))).size;
+  if (target === "ftp") return withFtp(ftp, (client) => client.size(path.posix.join(ftpFolder(ftp, visibility), name)));
+  return (await stat(path.join(visibility === "public" ? PUBLIC_DIR : PRIVATE_DIR, name))).size;
+}
+
+/** Records where a file was stored. Safe to repeat for the same file. */
+export async function registerStoredFile(file: StoredFile & { contentType?: string | null; sizeBytes?: number | null }) {
+  await db.insert(schema.storedFiles).values(file).onConflictDoNothing();
+}
+
+/** Stores a file under `name` (see storagePath) and returns its public URL. */
+export async function storeFile(name: string, file: File) {
+  const { backend, ftp } = await getStorageSettings();
+  const target = resolveBackend(backend);
+  const ref = await writeToBackend(target, "public", name, file, file.type, ftp);
+  await registerStoredFile({ backend: target, visibility: "public", name, ref, contentType: file.type, sizeBytes: file.size });
+  return ref;
 }
 
 /** Whether a URL a form sends back (e.g. a gallery image) points at a file we stored. */
@@ -174,10 +254,16 @@ export async function isOwnUpload(url: string) {
   if (ftp.publicBaseUrl && url.startsWith(`${ftp.publicBaseUrl}/`)) return true;
   try {
     const u = new URL(url);
-    return u.protocol === "https:" && u.hostname.endsWith(".public.blob.vercel-storage.com");
+    if (u.protocol === "https:" && u.hostname.endsWith(".public.blob.vercel-storage.com")) return true;
   } catch {
     return false;
   }
+  // Still ours if the FTP address has changed since it was uploaded.
+  const known = await db.query.storedFiles.findFirst({
+    where: and(eq(schema.storedFiles.ref, url), eq(schema.storedFiles.visibility, "public")),
+    columns: { id: true },
+  });
+  return !!known;
 }
 
 // ---------------------------------------------------------------- private files
@@ -190,38 +276,9 @@ export async function isOwnUpload(url: string) {
 export async function storePrivateFile(name: string, file: File | Blob) {
   const { backend, ftp } = await getStorageSettings();
   const target = resolveBackend(backend);
-
-  if (target === "blob") {
-    if (!process.env.BLOB_READ_WRITE_TOKEN) throw new StorageError("Vercel Blob is selected but BLOB_READ_WRITE_TOKEN is missing.");
-    const blob = await put(`private/${name}`, file, { access: "private", contentType: file.type });
-    return `blob:${blob.pathname}`;
-  }
-
-  if (target === "ftp") {
-    // Kept outside the public uploads folder, with a deny-all rule for Apache-style hosts.
-    const dir = path.posix.join(privateFtpRoot(ftp), path.posix.dirname(name));
-    const buffer = Buffer.from(await file.arrayBuffer());
-    await withFtp(ftp, async (client) => {
-      await client.ensureDir(privateFtpRoot(ftp));
-      await client.uploadFrom(Readable.from(["Require all denied\nDeny from all\n"]), ".htaccess");
-      await client.ensureDir(dir);
-      await client.uploadFrom(Readable.from(buffer), path.posix.basename(name));
-    });
-    return `ftp:${name}`;
-  }
-
-  if (process.env.VERCEL) throw new StorageError("File storage is not configured. Choose Vercel Blob or FTP in Admin → System settings.");
-  const file_ = path.join(PRIVATE_DIR, name);
-  await mkdir(path.dirname(file_), { recursive: true });
-  await writeFile(file_, Buffer.from(await file.arrayBuffer()));
-  return `local:${name}`;
-}
-
-/** Local private files live outside public/, so the web server never serves them directly. */
-const PRIVATE_DIR = path.join(process.cwd(), ".private-uploads");
-
-function privateFtpRoot(ftp: FtpConfig) {
-  return path.posix.join(path.posix.dirname(ftp.directory.replace(/\/$/, "") || "/"), "myplug-private");
+  const ref = await writeToBackend(target, "private", name, file, file.type, ftp);
+  await registerStoredFile({ backend: target, visibility: "private", name, ref, contentType: file.type, sizeBytes: file.size });
+  return ref;
 }
 
 const MIME: Record<string, string> = {
@@ -246,7 +303,6 @@ export async function privateFileResponse(key: string, request: Request, extraHe
   const base = { "Content-Type": type, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", ...extraHeaders };
 
   if (scheme === "blob") {
-    const { get } = await import("@vercel/blob");
     const result = await get(name, { access: "private", headers: range ? { Range: range } : undefined });
     if (!result || !result.stream) return new Response("Not found", { status: 404 });
     const contentRange = result.headers.get("content-range");
@@ -262,8 +318,6 @@ export async function privateFileResponse(key: string, request: Request, extraHe
   }
 
   if (scheme === "local") {
-    const { createReadStream } = await import("node:fs");
-    const { stat } = await import("node:fs/promises");
     const file = path.join(PRIVATE_DIR, name);
     if (!file.startsWith(PRIVATE_DIR)) return new Response("Not found", { status: 404 });
     const info = await stat(file).catch(() => null);
@@ -286,7 +340,6 @@ export async function privateFileResponse(key: string, request: Request, extraHe
   if (scheme === "ftp") {
     // FTP has no byte ranges over this client; fine for photos and documents, slow for large media.
     const { ftp } = await getStorageSettings();
-    const { PassThrough } = await import("node:stream");
     const chunks: Buffer[] = [];
     const sink = new PassThrough();
     sink.on("data", (c: Buffer) => chunks.push(c));

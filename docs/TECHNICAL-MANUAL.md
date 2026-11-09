@@ -137,7 +137,17 @@ copy: `pg_dump "$DATABASE_URL" > backup.sql`; restore with `psql "$DATABASE_URL"
   links, so the folder must also be served by a web server. **Test connection** uploads a file, fetches it
   over HTTPS and deletes it. Add a deny-all rule (e.g. `.htaccess`: `Require all denied`) on the private
   sub-folder.
-- **Switching storage** only affects new uploads; existing files keep their URLs.
+- **Switching storage** only affects new uploads; existing files keep their URLs and keep working.
+- **Tracking:** every file has a row in `stored_files` saying which backend holds it, its path, and the exact
+  reference other tables store (a URL, or a private key like `ftp:media/...`).
+- **Folders:** new files go to `<type>/<year>/<month>/<first 2 characters of id>/<id>.<ext>` (`storagePath()`).
+- **Copying between storage** (*Admin → System settings → Where your files are*): `storage-copy.server.ts` copies
+  one file at a time, checks its size, then updates its `stored_files` row and every reference to it in a single
+  statement. It runs in short bursts while that page is open, and for up to 45 seconds in the daily job. A file is
+  tried 3 times; starting the copy again retries failures. Originals are not deleted: remove them at the old
+  provider once you're happy. Blob files uploaded before a copy need `BLOB_READ_WRITE_TOKEN` until it finishes.
+- **Adding a column that stores an upload?** Add it to the lists at the top of `storage-copy.server.ts`, or it
+  keeps pointing at the old copy after a move.
 - **Upload limits:** 4 MB per image (Vercel's request limit is 4.5 MB). Galleries upload one photo per
   request. Digital products upload straight from the browser to Blob (up to 2 GB).
 - **Image optimisation** (`app/lib/image-optimize.server.ts`): when on, public photos are rotated (EXIF),
@@ -205,6 +215,12 @@ Designed so it can't slow the site:
 - Passwords hashed with bcrypt. Sessions are signed cookies (`httpOnly`, `sameSite=lax`, `secure` in
   production). Changing a password invalidates other sessions.
 - Password reset tokens: single use, one hour, only a hash stored, three requests per hour.
+- **Two-step sign-in** (`app/lib/mfa.server.ts`, *Two-step sign-in* in the account menu): optional for everyone,
+  and mandatory for admins when `NODE_ENV=production`. Applies to password, Google/Facebook and password-reset
+  sign-ins. Codes come by email (10 minutes, single use, keyed hash stored, 5 per hour) or from an authenticator
+  app (secret encrypted with `SESSION_SECRET`). Email always works as a fallback if a phone is lost. Turning it
+  off or removing the app needs a code. Five wrong codes lock further tries for 15 minutes. Changing
+  `SESSION_SECRET` disconnects authenticator apps; email codes keep working.
 - Merchants never see customers' email addresses. Reviewers show by first name.
 - The secret reserve price on property is never sent to anyone but the seller.
 - Upload links for advertisers: random token (hash stored), bcrypt-hashed 6-digit passcode, 5 attempts.
@@ -285,6 +301,7 @@ parts), `swift@demo.myplug` (courier), `admin@myplug.local` (admin). Data resets
 | `SESSION_SECRET must be set and at least 32 characters long` | Missing or short secret | Add a 32+ character `SESSION_SECRET`; redeploy |
 | Pages error with `relation "..." does not exist` | Migrations not run on this database | `npm run db:migrate` against production |
 | Can't sign in to admin | No admin yet, or wrong database | `npm run setup -- --email ...` against the production `DATABASE_URL` |
+| Admin sign-in code never arrives | Email isn't working | Check `RESEND_API_KEY`, `EMAIL_FROM` and the domain in Resend; check the function logs for `two-step code not sent` |
 | Image upload: "File storage is not configured" | No Blob token and FTP not set | Connect Blob, or fill in FTP in System settings |
 | FTP "Test connection" fails | Wrong host/port/mode, firewall, or public URL doesn't serve the folder | Try explicit FTPS on 21, check the public URL in a browser, check passive ports are open |
 | Images broken after changing `SESSION_SECRET` | FTP password can't be decrypted | Re-enter the FTP password and save |

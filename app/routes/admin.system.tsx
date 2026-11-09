@@ -1,5 +1,5 @@
-import { HardDriveIcon, PlayIcon, PlugZapIcon } from "lucide-react";
-import { useState } from "react";
+import { ArrowRightLeftIcon, HardDriveIcon, PlayIcon, PlugZapIcon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { FormError, PageHeader } from "~/components/page";
 import { Button } from "~/components/ui/button";
@@ -20,6 +20,7 @@ import {
   type FtpConfig,
   type StorageBackend,
 } from "~/lib/storage.server";
+import { getCopyStatus, startCopyJob, stopCopyJob, type CopyStatus } from "~/lib/storage-copy.server";
 import { cn, str } from "~/lib/utils";
 import type { Route } from "./+types/admin.system";
 
@@ -27,12 +28,14 @@ export const meta: Route.MetaFunction = () => [{ title: "System settings · Admi
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
-  const [{ backend, ftp }, retention, listings, images] = await Promise.all([getStorageSettings(), getRetentionSettings(), getListingRetention(), getImageSettings()]);
+  const [{ backend, ftp }, retention, listings, images, copy] = await Promise.all([getStorageSettings(), getRetentionSettings(), getListingRetention(), getImageSettings(), getCopyStatus()]);
   const candidates = await retentionCandidates(retention);
   return {
     backend,
     activeBackend: resolveBackend(backend),
     blobConfigured: !!process.env.BLOB_READ_WRITE_TOKEN,
+    canUseLocal: !process.env.VERCEL,
+    copy,
     // Never send the password back to the browser; only whether one is saved.
     ftp: { ...ftp, password: undefined, hasPassword: !!ftp.password },
     retention,
@@ -86,6 +89,23 @@ export async function action({ request }: Route.ActionArgs) {
     return { ok: "Storage settings saved. New uploads use them straight away." };
   }
 
+  if (intent === "copy-start") {
+    const target = str(form.get("target"));
+    if (target !== "blob" && target !== "ftp" && target !== "local") return { error: "Choose where to copy the files." };
+    try {
+      await startCopyJob(target);
+      return { ok: "Copy started. It runs in small batches while this page is open, and a batch runs with the daily job." };
+    } catch (e) {
+      if (e instanceof StorageError) return { error: e.message };
+      throw e;
+    }
+  }
+
+  if (intent === "copy-stop") {
+    await stopCopyJob();
+    return { ok: "Copy stopped. Files already copied stay on the new storage, and starting again carries on from there." };
+  }
+
   if (intent === "retention") {
     const int = (name: string, min: number, max: number) => Math.min(max, Math.max(min, Math.floor(Number(form.get(name)) || min)));
     const archiveMonths = int("archiveMonths", 1, 60);
@@ -123,8 +143,120 @@ const BACKENDS: { value: StorageBackend; label: string; text: string }[] = [
   { value: "local", label: "Local disk", text: "public/uploads, for development only" },
 ];
 
+const backendLabel = (value: string) => BACKENDS.find((b) => b.value === value)?.label ?? value;
+const formatBytes = (n: number) => (n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(1)} GB` : `${(n / 1024 ** 2).toFixed(1)} MB`);
+
+/** Where files live now, and the background copy between storage options. */
+function StorageCopyCard({ initial, canUseLocal, busy }: { initial: CopyStatus; canUseLocal: boolean; busy: boolean }) {
+  const [status, setStatus] = useState(initial);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => setStatus(initial), [initial]);
+
+  const running = status.job?.status === "running";
+  const jobId = status.job?.id;
+  // Small bursts with a rest between them, only while this page is open.
+  useEffect(() => {
+    if (!running) return;
+    let cancelled = false;
+    setPaused(false);
+    (async () => {
+      while (!cancelled) {
+        const res = await fetch("/api/admin/storage-copy", { method: "POST" });
+        if (!res.ok || res.redirected) throw new Error("copy request failed");
+        const next = (await res.json()) as CopyStatus;
+        if (cancelled) return;
+        setStatus(next);
+        if (next.job?.status !== "running") return;
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+    })().catch(() => setPaused(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [running, jobId]);
+
+  const percent = status.total ? Math.round((status.onTarget / status.total) * 100) : 100;
+  const targets = BACKENDS.filter((b) => b.value === "blob" || b.value === "ftp" || (b.value === "local" && canUseLocal));
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ArrowRightLeftIcon className="size-5 text-primary" /> Where your files are
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          MyPlug records where every uploaded file is kept, so files on different storage keep working side by side. You can also copy them all to one place in
+          the background, one file at a time. Originals are left where they were, so nothing is lost if a copy fails.
+        </p>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        {status.byBackend.length ? (
+          <ul className="grid gap-1 text-sm">
+            {status.byBackend.map((b) => (
+              <li key={b.backend}>
+                <strong>{backendLabel(b.backend)}:</strong> {b.files} files{b.bytes ? `, ${formatBytes(b.bytes)}` : ""}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">No files have been uploaded yet.</p>
+        )}
+
+        {status.job ? (
+          <div className="grid gap-2 rounded-xl bg-muted/50 p-3 text-sm">
+            <p className="font-semibold">
+              {running ? "Copying" : status.job.status === "done" ? "Finished copying" : "Stopped copying"} to {backendLabel(status.job.target)}: {status.onTarget} of {status.total} files
+            </p>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div className="h-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+            </div>
+            {paused && running ? <p className="text-xs text-muted-foreground">Paused here because a request failed. Reload this page to carry on, or leave it to the daily job.</p> : null}
+            {status.failures.length ? (
+              <div className="grid gap-1">
+                <p className="font-semibold text-destructive">Couldn't copy these after 3 tries (start the copy again to retry):</p>
+                {status.failures.map((f) => (
+                  <p key={f.name} className="text-xs break-all">
+                    {f.name}: {f.error}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {running ? (
+          <Form method="post">
+            <Button type="submit" name="intent" value="copy-stop" variant="outline" disabled={busy}>
+              Stop copying
+            </Button>
+          </Form>
+        ) : (
+          <Form method="post" className="flex flex-wrap items-end gap-3">
+            <Field label="Copy all files to">
+              <NativeSelect name="target" defaultValue={targets[0]?.value}>
+                {targets.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </NativeSelect>
+            </Field>
+            <Button type="submit" name="intent" value="copy-start" variant="outline" disabled={busy}>
+              Start copying
+            </Button>
+          </Form>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Copying doesn't change where new uploads go: set that above. Keep the old storage connected until the copy has finished. Pages already use the new copy of each
+          file as soon as it's moved.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SystemSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { backend, activeBackend, blobConfigured, ftp, retention, preview, listings, images } = loaderData;
+  const { backend, activeBackend, blobConfigured, canUseLocal, copy, ftp, retention, preview, listings, images } = loaderData;
   const [choice, setChoice] = useState<StorageBackend>(backend);
   const busy = useNavigation().state !== "idle";
 
@@ -148,7 +280,7 @@ export default function SystemSettings({ loaderData, actionData }: Route.Compone
           <Form method="post" className="grid gap-4">
             <p className="text-sm text-muted-foreground">
               Uploads currently go to: <strong className="text-foreground">{BACKENDS.find((b) => b.value === activeBackend)?.label}</strong>
-              {!blobConfigured ? " · Vercel Blob is not configured" : ""}. Existing files stay where they are.
+              {!blobConfigured ? " · Vercel Blob is not configured" : ""}. Existing files stay where they are and keep working.
             </p>
             <div className="grid gap-2 sm:grid-cols-2">
               {BACKENDS.map((b) => (
@@ -214,6 +346,8 @@ export default function SystemSettings({ loaderData, actionData }: Route.Compone
           </Form>
         </CardContent>
       </Card>
+
+      <StorageCopyCard initial={copy} canUseLocal={canUseLocal} busy={busy} />
 
       <Card className="mt-6">
         <CardHeader>

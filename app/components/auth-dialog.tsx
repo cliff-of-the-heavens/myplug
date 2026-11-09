@@ -349,6 +349,11 @@ export function AuthDialogProvider({ signedIn, children }: { signedIn: boolean; 
     if (signedIn) setState(null);
   }, [signedIn]);
 
+  // The password was accepted and the two-step code page has taken over.
+  useEffect(() => {
+    if (location.pathname === "/login/verify") setState(null);
+  }, [location.pathname]);
+
   const redirectTo = state?.opts.redirectTo ?? currentPath(location);
   const switchTo = (mode: AuthMode) => setState((s) => (s ? { ...s, mode } : s));
 

@@ -756,6 +756,77 @@ export const couponRedemptions = pgTable("coupon_redemptions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Every uploaded file and where it lives now. `ref` is exactly what other tables hold for it:
+ * a public URL, or a private key such as "ftp:media/...". Copying a file to another backend
+ * updates this row and those references together.
+ */
+export const storedFiles = pgTable(
+  "stored_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    backend: text("backend").$type<"blob" | "ftp" | "local">().notNull(),
+    visibility: text("visibility").$type<"public" | "private">().notNull(),
+    name: text("name").notNull(), // path inside the storage area, e.g. products/2026/11/3f/<uuid>.webp
+    ref: text("ref").notNull().unique(),
+    contentType: text("content_type"),
+    sizeBytes: bigint("size_bytes", { mode: "number" }), // unknown for files uploaded straight from the browser
+    previousBackend: text("previous_backend"), // the copy left behind by the last move
+    previousRef: text("previous_ref"),
+    movedAt: timestamp("moved_at", { withTimezone: true }),
+    copyAttempts: integer("copy_attempts").notNull().default(0),
+    copyError: text("copy_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("stored_files_backend_idx").on(t.backend, t.copyAttempts, t.createdAt)],
+);
+
+/** A background copy of stored files to another backend. Progress is read from stored_files. */
+export const storageCopyJobs = pgTable(
+  "storage_copy_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    target: text("target").$type<"blob" | "ftp" | "local">().notNull(),
+    status: text("status").$type<"running" | "done" | "stopped">().notNull().default("running"),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }), // only one worker at a time
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("storage_copy_jobs_one_running_idx").on(t.status).where(sql`${t.status} = 'running'`)],
+);
+
+/** Two-step sign-in settings. Secrets are encrypted with a key derived from SESSION_SECRET. */
+export const userMfa = pgTable("user_mfa", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  totpSecret: text("totp_secret"), // authenticator app, once confirmed
+  totpPendingSecret: text("totp_pending_secret"), // being set up, not yet confirmed
+  totpLastStep: bigint("totp_last_step", { mode: "number" }), // a code can't be used twice
+  failures: integer("failures").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  ...timestamps,
+});
+
+/** Emailed one-time codes. Only a keyed hash of the code is stored. */
+export const otpCodes = pgTable(
+  "otp_codes",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    purpose: text("purpose").$type<"login" | "enable" | "disable">().notNull(),
+    codeHash: text("code_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("otp_codes_user_idx").on(t.userId, t.createdAt)],
+);
+
 /** One-time password reset links. Only a hash of the token is stored. */
 export const passwordResets = pgTable(
   "password_resets",

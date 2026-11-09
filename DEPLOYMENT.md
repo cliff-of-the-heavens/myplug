@@ -69,6 +69,10 @@ exactly. A Facebook app must be switched to **Live** before people outside your 
 Without `RESEND_API_KEY`, no email is sent at all: password reset, order notices and alerts only appear in
 the logs.
 
+> **Set up email before your first admin sign-in.** In production every admin must enter a code sent by email
+> (see `docs/TECHNICAL-MANUAL.md`, Two-step sign-in). Without `RESEND_API_KEY` and a verified `EMAIL_FROM`,
+> admins can't get a code and can't sign in.
+
 > **Never change `SESSION_SECRET` after launch** unless you mean to: it signs everyone out and makes the
 > saved FTP password unreadable (you'd need to re-enter it).
 
@@ -144,6 +148,9 @@ The Hobby plan allows **one scheduled run per day**, so `vercel.json` has one jo
 
 To run it by hand: **Admin → System settings → Run the daily jobs now**.
 
+It also runs a batch of any storage copy in progress (**Admin → System settings → Where your files are**), and
+clears expired sign-in codes.
+
 On a **Pro** plan you can add a second job, `/api/cron/alerts` every 15 minutes, for faster large mailings:
 
 ```json
@@ -188,7 +195,7 @@ Images live in Blob or on your FTP server; back those up with your host's tools.
 - [ ] Neon connected (`DATABASE_URL`)
 - [ ] Blob connected (`BLOB_READ_WRITE_TOKEN`) **or** FTP filled in after first deploy
 - [ ] `SESSION_SECRET`, `APP_URL`, `CRON_SECRET` set
-- [ ] `RESEND_API_KEY`, `EMAIL_FROM` set (domain verified in Resend)
+- [ ] `RESEND_API_KEY`, `EMAIL_FROM` set (domain verified in Resend; admins can't sign in without this)
 - [ ] `npm run db:migrate` run against production
 - [ ] `npm run setup -- --email ...` run (admin created)
 - [ ] Redeployed, signed in as admin
