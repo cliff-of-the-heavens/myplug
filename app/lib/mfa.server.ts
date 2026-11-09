@@ -4,7 +4,8 @@ import QRCode from "qrcode";
 import { db, schema } from "~/db/client.server";
 import type { User } from "~/db/schema";
 import { ADMIN_MFA_REQUIRED } from "./auth.server";
-import { EMAIL_PROVIDER_CONFIGURED, escapeHtml, sendEmails } from "./email.server";
+import { EMAIL_PROVIDER_CONFIGURED, sendEmails } from "./email.server";
+import { renderEmail } from "./email-template.server";
 import { decryptSecret, encryptSecret } from "./storage.server";
 
 const { userMfa, otpCodes } = schema;
@@ -80,7 +81,15 @@ export async function sendEmailCode(user: Person, purpose: OtpPurpose) {
       to: user.email,
       subject: "Your MyPlug security code",
       text: `Hi ${user.name},\n\nYour code to ${action} is ${code}. It works once, for the next ${CODE_MINUTES} minutes.\n\nIf you didn't ask for this, someone may know your password: change it straight away.`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:520px"><p>Hi ${escapeHtml(user.name)},</p><p>Your code to ${action} is:</p><p style="font-size:30px;font-weight:bold;letter-spacing:6px">${code}</p><p>It works once, for the next ${CODE_MINUTES} minutes.</p><p style="color:#777;font-size:13px">If you didn't ask for this, someone may know your password: change it straight away.</p></div>`,
+      html: renderEmail({
+        preview: `Your code to ${action}. It works for ${CODE_MINUTES} minutes.`,
+        eyebrow: "Security code",
+        title: "Here's your code",
+        greeting: user.name,
+        paragraphs: [`Enter this code to ${action}. It works once, for the next ${CODE_MINUTES} minutes.`],
+        code,
+        note: "Never share this code with anyone. If you didn't ask for it, someone may know your password: change it straight away.",
+      }),
     },
   ]);
   if (!result.ok) {
@@ -236,7 +245,14 @@ async function sendNotice(user: Person, message: string) {
       to: user.email,
       subject: "Your MyPlug sign-in security changed",
       text: `Hi ${user.name},\n\n${message}\n\nIf this wasn't you, change your password straight away and contact support.`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:520px"><p>Hi ${escapeHtml(user.name)},</p><p>${escapeHtml(message)}</p><p>If this wasn't you, change your password straight away and contact support.</p></div>`,
+      html: renderEmail({
+        preview: message,
+        eyebrow: "Account security",
+        title: "Your sign-in security changed",
+        greeting: user.name,
+        paragraphs: [message],
+        note: "If this wasn't you, change your password straight away and contact support.",
+      }),
     },
   ]);
 }

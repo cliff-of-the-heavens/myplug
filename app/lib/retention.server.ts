@@ -1,7 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { and, eq, inArray, isNotNull, isNull, lt, sql, type SQL } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
-import { appUrl, escapeHtml, sendEmails, type Email } from "./email.server";
+import { appUrl, sendEmails, type Email } from "./email.server";
+import { renderEmail } from "./email-template.server";
 import { getSettings, intSetting, setSettings } from "./settings.server";
 
 const { users, stores, products, orders, storeSubscriptions, recurringPlans } = schema;
@@ -81,7 +82,13 @@ export async function retentionCandidates(cfg: RetentionSettings) {
 function notice(to: string, subject: string, lines: string[]): Email {
   const signIn = `${appUrl()}/login`;
   const text = [...lines, "", `Sign in: ${signIn}`].join("\n");
-  const html = `<div style="font-family:Arial,sans-serif;max-width:520px">${lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("")}<p><a href="${escapeHtml(signIn)}">Sign in to MyPlug</a></p></div>`;
+  const html = renderEmail({
+    preview: lines[1] ?? subject,
+    eyebrow: "Your store",
+    title: subject,
+    paragraphs: lines,
+    button: { label: "Sign in to MyPlug", href: signIn },
+  });
   return { to, subject, html, text };
 }
 

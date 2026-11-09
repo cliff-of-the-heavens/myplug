@@ -7,12 +7,13 @@ import { recordAdClick } from "./analytics.server";
 import { getUser } from "./auth.server";
 import { cached, invalidate } from "./cache.server";
 import { APP_TIME_ZONE, isDateStr, today } from "./dates";
-import { appUrl, EMAIL_PROVIDER_CONFIGURED, escapeHtml, sendEmails } from "./email.server";
+import { appUrl, EMAIL_PROVIDER_CONFIGURED, sendEmails } from "./email.server";
 import { DEFAULT_CURRENCY, money, parseMoney } from "./format";
 import { imageSize } from "./image-size.server";
 import { notify, notifyAdmins } from "./notify.server";
 import { referenceNumber } from "./orders.server";
 import { getSettings, intSetting, setSettings } from "./settings.server";
+import { renderEmail } from "./email-template.server";
 import { storagePath } from "./storage-paths";
 import { StorageError, storeFile } from "./storage.server";
 import { AD_FREE_PLANS, ASPECT_TOLERANCE, cleanLink, formatList, MAX_WEEKS, MIN_WIDTH_RATIO } from "./banners";
@@ -222,7 +223,14 @@ async function tellAdvertiser(c: { advertiserId: string | null; advertiserEmail:
       to: c.advertiserEmail,
       subject: `MyPlug ad ${c.number}: ${title}`,
       text: `Hi ${c.advertiserName},\n\n${title}\n${body}\n\nReference: ${c.number}\nReply to this email with any questions.`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:520px"><p>Hi ${escapeHtml(c.advertiserName)},</p><p><strong>${escapeHtml(title)}</strong></p><p>${escapeHtml(body)}</p><p style="color:#777">Reference: ${escapeHtml(c.number)}</p></div>`,
+      html: renderEmail({
+        preview: body,
+        eyebrow: "Your banner ad",
+        title,
+        greeting: c.advertiserName,
+        paragraphs: [body],
+        note: `Reference: ${c.number}. Reply to this email with any questions.`,
+      }),
     },
   ]).catch((e) => console.error("Advertiser email failed", e));
 }
@@ -355,7 +363,19 @@ export async function createUploadLink(id: string, { emailPasscode }: { emailPas
         "",
         `Banner size: ${spec}.`,
       ].join("\n"),
-      html: `<div style="font-family:Arial,sans-serif;max-width:520px"><p>Hi ${escapeHtml(c.advertiserName)},</p><p>Please upload the banner for your <strong>${escapeHtml(c.placement.name)}</strong> ad. The link works once and is valid for ${UPLOAD_LINK_DAYS} days.</p><p><a href="${escapeHtml(link)}" style="display:inline-block;background:#ff5a4e;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none;font-weight:bold">Upload your banner</a></p><p>${emailPasscode ? `Passcode: <strong style="font-size:18px;letter-spacing:3px">${passcode}</strong>` : "We'll give you the passcode separately by phone or SMS."}</p><p style="color:#777">Banner size: ${escapeHtml(spec)}. Reference: ${escapeHtml(c.number)}</p></div>`,
+      html: renderEmail({
+        preview: `Upload the banner for your ${c.placement.name} ad.`,
+        eyebrow: "Your banner ad",
+        title: "Time to upload your banner",
+        greeting: c.advertiserName,
+        paragraphs: [
+          `Please upload the banner for your ${c.placement.name} ad. The link works once and is valid for ${UPLOAD_LINK_DAYS} days.`,
+          emailPasscode ? "You'll need this passcode:" : "We'll give you the passcode separately by phone or SMS.",
+        ],
+        code: emailPasscode ? passcode : undefined,
+        button: { label: "Upload your banner", href: link },
+        note: `Banner size: ${spec}. Reference: ${c.number}`,
+      }),
     },
   ]).catch((e) => console.error("Upload link email failed", e));
   return { link, passcode, emailed: EMAIL_PROVIDER_CONFIGURED };

@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { data, Form, redirect, useNavigation } from "react-router";
+import { CodeInput } from "~/components/code-input";
 import { FlashMessage, FormError } from "~/components/page";
 import { Logo } from "~/components/site-header";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
-import { Field, Input } from "~/components/ui/input";
+import { Field } from "~/components/ui/input";
 import { db, schema } from "~/db/client.server";
 import { cancelMfaChallenge, getFlash, getMfaPending } from "~/lib/auth.server";
 import { checkCode, hasAuthenticator, maskEmail, MfaError, sendEmailCode } from "~/lib/mfa.server";
@@ -67,8 +68,8 @@ export default function VerifyCode({ loaderData, actionData }: Route.ComponentPr
           <Form method="post" className="grid gap-4">
             <FormError error={actionData && "error" in actionData ? actionData.error : null} />
             {actionData && "sent" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.sent}</p> : null}
-            <Field label="6-digit code">
-              <Input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={7} required autoFocus />
+            <Field label="6-digit code" className="text-center">
+              <CodeInput autoFocus resetOn={actionData} />
             </Field>
             <Button type="submit" size="lg" name="intent" value="verify" disabled={busy}>
               {busy ? "Checking..." : "Continue"}

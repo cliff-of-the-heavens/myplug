@@ -35,9 +35,26 @@ const sessionStorage = createCookieSessionStorage<
     path: "/",
     secure: process.env.NODE_ENV === "production",
     secrets: [secret],
-    maxAge: 60 * 60 * 24 * 30,
+    // Long on purpose: when a session ends is decided by SESSION_RULES on the server, so the
+    // cookie mustn't run out on someone who's still using the site.
+    maxAge: 60 * 60 * 24 * 400,
   },
 });
+
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+
+/**
+ * How long a session lasts, by role. idleMs: signed out after this long without using the site.
+ * maxMs: signed out this long after signing in, however active they are. activityEveryMs: how
+ * often activity is written to the database, which must be well inside idleMs.
+ */
+const SESSION_RULES: Record<User["role"], { idleMs: number; maxMs: number | null; activityEveryMs: number }> = {
+  customer: { idleMs: 30 * DAY, maxMs: null, activityEveryMs: 6 * 60 * MINUTE },
+  merchant: { idleMs: 14 * DAY, maxMs: null, activityEveryMs: 6 * 60 * MINUTE },
+  courier: { idleMs: 14 * DAY, maxMs: null, activityEveryMs: 6 * 60 * MINUTE },
+  admin: { idleMs: 30 * MINUTE, maxMs: 12 * 60 * MINUTE, activityEveryMs: MINUTE },
+};
 
 export type SessionUser = Pick<User, "id" | "email" | "name" | "role" | "status"> & {
   storeId: string | null;
@@ -65,8 +82,6 @@ export async function verifyLogin(email: string, password: string) {
   return ok ? user : null;
 }
 
-const ACTIVITY_INTERVAL_MS = 6 * 60 * 60 * 1000;
-
 export async function touchActivity(userId: string) {
   await db.update(schema.users).set({ lastActiveAt: new Date() }).where(eq(schema.users.id, userId));
 }
@@ -89,8 +104,13 @@ export async function getUser(request: Request): Promise<SessionUser | null> {
   // Signed in before the password was last changed (e.g. on a lost phone): no longer valid.
   if (row.passwordChangedAt && (session.get("issuedAt") ?? 0) < row.passwordChangedAt.getTime()) return null;
 
-  // Activity keeps stores from being archived as inactive; record it at most every few hours.
-  if (Date.now() - row.lastActiveAt.getTime() > ACTIVITY_INTERVAL_MS) await touchActivity(row.id);
+  const rules = SESSION_RULES[row.role];
+  const sinceActive = Date.now() - row.lastActiveAt.getTime();
+  if (sinceActive > rules.idleMs) return null;
+  if (rules.maxMs !== null && Date.now() - (session.get("issuedAt") ?? 0) > rules.maxMs) return null;
+
+  // Activity keeps sessions alive and stores from being archived as inactive.
+  if (sinceActive > rules.activityEveryMs) await touchActivity(row.id);
 
   const { store, courier, lastActiveAt: _, passwordChangedAt: __, ...user } = row;
   return {

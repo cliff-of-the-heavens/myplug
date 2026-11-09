@@ -214,6 +214,9 @@ Designed so it can't slow the site:
 
 - Passwords hashed with bcrypt. Sessions are signed cookies (`httpOnly`, `sameSite=lax`, `secure` in
   production). Changing a password invalidates other sessions.
+- **Session length** (`SESSION_RULES` in `app/lib/auth.server.ts`): customers are signed out after 30 days without
+  using the site, merchants and couriers after 14 days, and admins after 30 minutes idle or 12 hours after signing
+  in, whichever comes first. Inactivity is tracked per account, so activity on one device counts for all of them.
 - Password reset tokens: single use, one hour, only a hash stored, three requests per hour.
 - **Two-step sign-in** (`app/lib/mfa.server.ts`, *Two-step sign-in* in the account menu): optional for everyone,
   and mandatory for admins when `NODE_ENV=production`. Applies to password, Google/Facebook and password-reset

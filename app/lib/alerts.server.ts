@@ -4,6 +4,7 @@ import { db, schema } from "~/db/client.server";
 import type { AlertType } from "~/db/schema";
 import { ALERT_MESSAGE_MAX, ALERT_NAME, ALERT_TYPE_LABEL, MAX_ALERT_ITEMS } from "./alerts";
 import { appUrl, escapeHtml, sendEmails, type Email } from "./email.server";
+import { EMAIL_COLORS, renderEmail } from "./email-template.server";
 import { money } from "./format";
 import { getSettings, intSetting, setSettings } from "./settings.server";
 import { isUuid } from "./utils";
@@ -369,31 +370,24 @@ export function buildAlertEmail(d: EmailInput, items: AlertItem[]): Email {
 <a href="${e(url)}" style="text-decoration:none;color:#1f1a24">
 ${image ? `<img src="${e(image)}" alt="" width="224" style="width:100%;max-width:224px;border-radius:10px;display:block">` : ""}
 <p style="margin:8px 0 2px;font-size:14px;font-weight:bold">${e(p.title)}</p>
-<p style="margin:0;font-size:15px;font-weight:bold;color:#ff5a4e">${e(price)}${was ? ` <span style="font-size:12px;color:#888;text-decoration:line-through;font-weight:normal">${e(was)}</span>` : ""}${pct ? ` <span style="font-size:12px;color:#0f9d8a">-${pct}%</span>` : ""}</p>
+<p style="margin:0;font-size:15px;font-weight:bold;color:${EMAIL_COLORS.coral}">${e(price)}${was ? ` <span style="font-size:12px;color:#888;text-decoration:line-through;font-weight:normal">${e(was)}</span>` : ""}${pct ? ` <span style="font-size:12px;background:${EMAIL_COLORS.yellow};color:#412805;padding:1px 6px;border-radius:999px">-${pct}%</span>` : ""}</p>
 </a></td>`;
     });
   const rows: string[] = [];
   for (let i = 0; i < cards.length; i += 2) rows.push(`<tr>${cards[i]}${cards[i + 1] ?? '<td width="50%"></td>'}</tr>`);
 
-  const html = `<!doctype html><html><body style="margin:0;background:#fff7f2;font-family:Arial,Helvetica,sans-serif;color:#1f1a24">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden">
-<tr><td style="background:linear-gradient(90deg,#ff5a4e,#ff8a3d);background-color:#ff5a4e;padding:16px 24px;color:#fff;font-size:20px;font-weight:bold">MyPlug</td></tr>
-<tr><td style="padding:24px 18px 8px">
-<p style="margin:0 6px 4px;font-size:13px;font-weight:bold;letter-spacing:.05em;text-transform:uppercase;color:#0f9d8a">${e(headline)} · ${e(store)}</p>
-<h1 style="margin:0 6px 12px;font-size:22px">${e(items.length > 1 ? `${items.length} picks from ${store}` : first.title)}</h1>
-${d.message ? `<p style="margin:0 6px 12px;padding:12px 16px;background:#f4f1f6;border-radius:10px;font-size:14px"><strong>Message from ${e(store)}:</strong><br>${e(d.message).replace(/\n/g, "<br>")}</p>` : ""}
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows.join("")}</table>
-</td></tr>
-<tr><td style="padding:8px 24px 24px">
-<a href="${e(storeUrl)}" style="display:inline-block;background:#ff5a4e;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:999px">See everything at ${e(store)}</a>
-<p style="margin:12px 0 0;font-size:13px"><a href="${e(base)}" style="color:#0f9d8a">Browse more on MyPlug</a></p>
-</td></tr>
-<tr><td style="padding:16px 24px;border-top:1px solid #eee;font-size:12px;color:#777;line-height:1.5">
+  const html = renderEmail({
+    preview: subject,
+    eyebrow: `${headline} · ${store}`,
+    title: items.length > 1 ? `${items.length} picks from ${store}` : first.title,
+    html: `${d.message ? `<p style="margin:0 0 14px;padding:14px 16px;background:${EMAIL_COLORS.mint};color:${EMAIL_COLORS.deepTeal};border-radius:12px;font-size:14px;line-height:1.5"><strong>Message from ${e(store)}:</strong><br>${e(d.message).replace(/\n/g, "<br>")}</p>` : ""}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px">${rows.join("")}</table>`,
+    button: { label: `See everything at ${store}`, href: storeUrl },
+    footer: `<a href="${e(base)}" style="color:${EMAIL_COLORS.coral};font-weight:bold">Browse more on MyPlug</a><br>
 You're getting this because you follow ${e(store)} on MyPlug and chose ${e(ALERT_TYPE_LABEL[d.type].toLowerCase())} alerts.
 MyPlug sends these emails for stores; stores never see your email address. We'll never ask for your password or payment details by email.<br>
-<a href="${e(storeUnsub)}" style="color:#777">Unsubscribe from ${e(store)}</a> · <a href="${e(allUnsub)}" style="color:#777">Stop all alerts</a> · <a href="${e(manage)}" style="color:#777">Choose which alerts you get</a>
-</td></tr></table></td></tr></table></body></html>`;
+<a href="${e(storeUnsub)}" style="color:${EMAIL_COLORS.muted}">Unsubscribe from ${e(store)}</a> · <a href="${e(allUnsub)}" style="color:${EMAIL_COLORS.muted}">Stop all alerts</a> · <a href="${e(manage)}" style="color:${EMAIL_COLORS.muted}">Choose which alerts you get</a>`,
+  });
 
   const text = [
     `${headline} at ${store}`,

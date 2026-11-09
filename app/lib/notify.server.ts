@@ -1,6 +1,7 @@
 import { and, count, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
-import { appUrl, escapeHtml, sendEmails } from "./email.server";
+import { appUrl, sendEmails } from "./email.server";
+import { renderEmail } from "./email-template.server";
 
 const { notifications, users } = schema;
 
@@ -28,9 +29,13 @@ export async function notify(userIds: (string | null | undefined)[], notice: Not
         to: r.email,
         subject: `MyPlug: ${notice.title}`,
         text: [`Hi ${r.name},`, "", notice.title, notice.body ?? "", "", `Open MyPlug: ${link}`].join("\n"),
-        html: `<div style="font-family:Arial,sans-serif;max-width:520px"><p>Hi ${escapeHtml(r.name)},</p><p><strong>${escapeHtml(notice.title)}</strong></p>${
-          notice.body ? `<p>${escapeHtml(notice.body)}</p>` : ""
-        }<p><a href="${escapeHtml(link)}" style="display:inline-block;background:#ff5a4e;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none;font-weight:bold">Open MyPlug</a></p></div>`,
+        html: renderEmail({
+          preview: notice.body ?? notice.title,
+          title: notice.title,
+          greeting: r.name,
+          paragraphs: notice.body ? [notice.body] : [],
+          button: { label: "Open MyPlug", href: link },
+        }),
       })),
     );
   } catch (e) {

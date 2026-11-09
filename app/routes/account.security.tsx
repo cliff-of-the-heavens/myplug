@@ -1,9 +1,10 @@
 import { ShieldCheckIcon, SmartphoneIcon } from "lucide-react";
 import { Form, useNavigation } from "react-router";
+import { CodeInput } from "~/components/code-input";
 import { Container, FormError, PageHeader } from "~/components/page";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Field, Input } from "~/components/ui/input";
+import { Field } from "~/components/ui/input";
 import { requireUser } from "~/lib/auth.server";
 import {
   authenticatorSetupDetails,
@@ -81,8 +82,8 @@ export async function action({ request }: Route.ActionArgs) {
 
 function CodeField({ label = "6-digit code" }: { label?: string }) {
   return (
-    <Field label={label}>
-      <Input name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={7} required className="max-w-40" />
+    <Field label={label} className="text-center">
+      <CodeInput />
     </Field>
   );
 }

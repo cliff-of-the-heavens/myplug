@@ -3,7 +3,8 @@ import bcrypt from "bcryptjs";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { db, schema } from "~/db/client.server";
 import { hashPassword } from "./auth.server";
-import { appUrl, EMAIL_PROVIDER_CONFIGURED, escapeHtml, sendEmails } from "./email.server";
+import { appUrl, EMAIL_PROVIDER_CONFIGURED, sendEmails } from "./email.server";
+import { renderEmail } from "./email-template.server";
 import { MIN_PASSWORD } from "./password";
 
 const { users, passwordResets } = schema;
@@ -45,7 +46,15 @@ export async function requestPasswordReset(email: string) {
       to: user.email,
       subject: "Reset your MyPlug password",
       text: [`Hi ${user.name},`, "", "Use this link to choose a new password. It works once, for the next hour:", link, "", "If you didn't ask for this, ignore this email: your password stays the same."].join("\n"),
-      html: `<div style="font-family:Arial,sans-serif;max-width:520px"><p>Hi ${escapeHtml(user.name)},</p><p>Use this button to choose a new password. It works once, for the next hour.</p><p><a href="${escapeHtml(link)}" style="display:inline-block;background:#ff5a4e;color:#fff;padding:10px 18px;border-radius:999px;text-decoration:none;font-weight:bold">Choose a new password</a></p><p style="color:#777;font-size:13px">If you didn't ask for this, ignore this email: your password stays the same.</p></div>`,
+      html: renderEmail({
+        preview: "Use this link to choose a new password. It works once, for the next hour.",
+        eyebrow: "Account security",
+        title: "Let's get you back in",
+        greeting: user.name,
+        paragraphs: ["Use this button to choose a new password. It works once, for the next hour."],
+        button: { label: "Choose a new password", href: link },
+        note: "If you didn't ask for this, ignore this email: your password stays the same.",
+      }),
     },
   ]);
   const devLink = !EMAIL_PROVIDER_CONFIGURED && process.env.NODE_ENV !== "production" ? link : null;
@@ -75,7 +84,15 @@ async function setPassword(userId: string, password: string) {
         to: u.email,
         subject: "Your MyPlug password was changed",
         text: `Hi ${u.name},\n\nYour MyPlug password was just changed and other devices were signed out.\nIf this wasn't you, reset your password straight away at ${appUrl()}/forgot-password and contact support.`,
-        html: `<div style="font-family:Arial,sans-serif;max-width:520px"><p>Hi ${escapeHtml(u.name)},</p><p>Your MyPlug password was just changed and other devices were signed out.</p><p>If this wasn't you, <a href="${escapeHtml(appUrl())}/forgot-password">reset your password</a> straight away and contact support.</p></div>`,
+        html: renderEmail({
+          preview: "Your MyPlug password was just changed and other devices were signed out.",
+          eyebrow: "Account security",
+          title: "Your password was changed",
+          greeting: u.name,
+          paragraphs: ["Your MyPlug password was just changed and other devices were signed out."],
+          button: { label: "This wasn't me", href: `${appUrl()}/forgot-password` },
+          note: "If this wasn't you, reset your password straight away and contact support.",
+        }),
       },
     ]);
   }
