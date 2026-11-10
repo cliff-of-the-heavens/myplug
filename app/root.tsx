@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { AuthDialogProvider } from "~/components/auth-dialog";
+import { Toaster } from "~/components/notice";
 import {
   isRouteErrorResponse,
   Link,
@@ -124,6 +125,7 @@ export default function App({ loaderData }: Route.ComponentProps) {
       </main>
       <SiteFooter />
       <MobileTabBar user={user} unread={unread} />
+      <Toaster />
     </AuthDialogProvider>
   );
 }

@@ -1,4 +1,5 @@
 import { EyeOffIcon, MailIcon, MegaphoneIcon, RocketIcon, ShieldCheckIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 import { AuthLink } from "~/components/auth-dialog";
@@ -130,7 +131,7 @@ export default function Advertise({ loaderData, actionData }: Route.ComponentPro
       <section className="grid gap-4" id="request">
         <h2 className="text-xl font-extrabold">Book a banner</h2>
         <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-        {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+        {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
         {canRequest ? (
           <RequestForm placements={placements} min={loaderData.today} />
         ) : (

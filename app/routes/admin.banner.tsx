@@ -1,4 +1,5 @@
 import { CopyIcon, LinkIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { data, Form, Link, useNavigation, useSearchParams } from "react-router";
 import { CreativeFields } from "~/components/banner-forms";
 import { FormError, PageHeader } from "~/components/page";
@@ -78,9 +79,9 @@ export default function AdminBanner({ loaderData, actionData }: Route.ComponentP
           </Button>
         }
       />
-      {params.get("created") ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">Ad saved. Next: add the banner (or send an upload link), then record payment and approve.</p> : null}
+      {params.get("created") ? <Notice tone="success">Ad saved. Next: add the banner (or send an upload link), then record payment and approve.</Notice> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-      {actionData && "ok" in actionData && !link ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData && !link ? <Notice tone="success">{actionData.ok}</Notice> : null}
 
       {link ? (
         <Card className="border-primary/50">

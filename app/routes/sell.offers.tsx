@@ -1,4 +1,5 @@
 import { GavelIcon, HandCoinsIcon, MessageCircleIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { EmptyState, FormError, PageHeader } from "~/components/page";
 import { DealCountdown } from "~/components/price";
@@ -70,7 +71,7 @@ export default function SellOffers({ loaderData, actionData }: Route.ComponentPr
         }
       />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
 
       {!listings.length ? (
         <EmptyState icon={HandCoinsIcon} title="No property listings yet">

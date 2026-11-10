@@ -1,3 +1,5 @@
+import { DeleteObjectCommand, GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { get, head, put } from "@vercel/blob";
 import { Client as FtpClient } from "basic-ftp";
 import { and, eq } from "drizzle-orm";
@@ -16,10 +18,24 @@ import { getSettings, setSettings } from "./settings.server";
  * - "blob":  Vercel Blob (needs BLOB_READ_WRITE_TOKEN)
  * - "ftp":   any FTP/FTPS server; files must be reachable over HTTP at `publicBaseUrl`
  *            (e.g. the server's web root), because browsers can't load ftp:// links
+ * - "r2":    Cloudflare R2 (or another S3-compatible service): a public bucket served at
+ *            `publicBaseUrl`, and a separate private bucket that is never public
  * - "local": public/uploads (development only; Vercel's disk is read-only)
  * - "auto":  Blob when a token is set, otherwise local in development
  */
-export type StorageBackend = "auto" | "blob" | "ftp" | "local";
+export type StorageBackend = "auto" | "blob" | "ftp" | "r2" | "local";
+const BACKEND_VALUES: StorageBackend[] = ["auto", "blob", "ftp", "r2", "local"];
+
+export type R2Config = {
+  accountId: string; // Cloudflare account ID
+  accessKeyId: string;
+  secretAccessKey: string; // decrypted; stored encrypted in settings
+  jurisdiction: "default" | "eu"; // EU-jurisdiction buckets use a different address
+  publicBucket: string; // photos, logos, banners: public access switched on
+  privateBucket: string; // IDs, licences, paid files: public access left off
+  publicBaseUrl: string; // the public bucket's address, e.g. https://files.myplugstore.com
+  endpoint: string; // optional: another S3-compatible service instead of R2
+};
 
 export type FtpConfig = {
   host: string;
@@ -62,7 +78,7 @@ export function decryptSecret(stored: string) {
 
 export async function getStorageSettings() {
   const all = await getSettings();
-  const backend = (["auto", "blob", "ftp", "local"].includes(all.storage_backend) ? all.storage_backend : "auto") as StorageBackend;
+  const backend = (BACKEND_VALUES.includes(all.storage_backend as StorageBackend) ? all.storage_backend : "auto") as StorageBackend;
   const ftp: FtpConfig = {
     host: all.ftp_host ?? "",
     port: Number(all.ftp_port) || 21,
@@ -72,21 +88,52 @@ export async function getStorageSettings() {
     directory: all.ftp_directory || "/",
     publicBaseUrl: (all.ftp_public_base_url ?? "").replace(/\/$/, ""),
   };
-  return { backend, ftp };
+  const r2: R2Config = {
+    accountId: all.r2_account_id ?? "",
+    accessKeyId: all.r2_access_key_id ?? "",
+    secretAccessKey: all.r2_secret_access_key ? decryptSecret(all.r2_secret_access_key) : "",
+    jurisdiction: all.r2_jurisdiction === "eu" ? "eu" : "default",
+    publicBucket: all.r2_public_bucket ?? "",
+    privateBucket: all.r2_private_bucket ?? "",
+    publicBaseUrl: (all.r2_public_base_url ?? "").replace(/\/$/, ""),
+    endpoint: (all.r2_endpoint ?? "").replace(/\/$/, ""),
+  };
+  return { backend, ftp, r2 };
 }
 
-/** Saves storage settings. Without `ftp` the saved FTP details are kept; an empty password keeps the current one. */
-export async function saveStorageSettings(backend: StorageBackend, ftp: (Omit<FtpConfig, "password"> & { password?: string }) | null) {
-  if (!ftp) return setSettings({ storage_backend: backend });
+type FtpInput = Omit<FtpConfig, "password"> & { password?: string };
+type R2Input = Omit<R2Config, "secretAccessKey"> & { secretAccessKey?: string };
+
+/**
+ * Saves storage settings. Details left out are kept as they are, and an empty password or
+ * secret keeps the saved one.
+ */
+export async function saveStorageSettings(backend: StorageBackend, { ftp, r2 }: { ftp?: FtpInput; r2?: R2Input } = {}) {
   await setSettings({
     storage_backend: backend,
-    ftp_host: ftp.host,
-    ftp_port: String(ftp.port),
-    ftp_user: ftp.user,
-    ftp_secure: ftp.secure,
-    ftp_directory: ftp.directory,
-    ftp_public_base_url: ftp.publicBaseUrl,
-    ...(ftp.password ? { ftp_password: encryptSecret(ftp.password) } : {}),
+    ...(ftp
+      ? {
+          ftp_host: ftp.host,
+          ftp_port: String(ftp.port),
+          ftp_user: ftp.user,
+          ftp_secure: ftp.secure,
+          ftp_directory: ftp.directory,
+          ftp_public_base_url: ftp.publicBaseUrl,
+          ...(ftp.password ? { ftp_password: encryptSecret(ftp.password) } : {}),
+        }
+      : {}),
+    ...(r2
+      ? {
+          r2_account_id: r2.accountId,
+          r2_access_key_id: r2.accessKeyId,
+          r2_jurisdiction: r2.jurisdiction,
+          r2_public_bucket: r2.publicBucket,
+          r2_private_bucket: r2.privateBucket,
+          r2_public_base_url: r2.publicBaseUrl,
+          r2_endpoint: r2.endpoint,
+          ...(r2.secretAccessKey ? { r2_secret_access_key: encryptSecret(r2.secretAccessKey) } : {}),
+        }
+      : {}),
   });
 }
 
@@ -94,6 +141,81 @@ export async function saveStorageSettings(backend: StorageBackend, ftp: (Omit<Ft
 export function resolveBackend(backend: StorageBackend): Exclude<StorageBackend, "auto"> {
   if (backend !== "auto") return backend;
   return process.env.BLOB_READ_WRITE_TOKEN ? "blob" : "local";
+}
+
+// ---------------------------------------------------------------- Cloudflare R2
+
+const r2Clients = new Map<string, S3Client>();
+
+function r2Endpoint(cfg: R2Config) {
+  return cfg.endpoint || `https://${cfg.accountId}.${cfg.jurisdiction === "eu" ? "eu." : ""}r2.cloudflarestorage.com`;
+}
+
+function r2Client(cfg: R2Config) {
+  if (!(cfg.accountId || cfg.endpoint) || !cfg.accessKeyId || !cfg.secretAccessKey) {
+    throw new StorageError("R2 account ID, access key ID and secret access key are required.");
+  }
+  const endpoint = r2Endpoint(cfg);
+  const id = createHash("sha256").update(`${endpoint}|${cfg.accessKeyId}|${cfg.secretAccessKey}`).digest("hex");
+  let client = r2Clients.get(id);
+  if (!client) {
+    client = new S3Client({
+      region: "auto",
+      endpoint,
+      forcePathStyle: true,
+      credentials: { accessKeyId: cfg.accessKeyId, secretAccessKey: cfg.secretAccessKey },
+      // R2 doesn't support every checksum newer AWS SDKs add by default.
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
+    });
+    r2Clients.set(id, client);
+  }
+  return client;
+}
+
+function r2Bucket(cfg: R2Config, visibility: Visibility) {
+  const bucket = visibility === "public" ? cfg.publicBucket : cfg.privateBucket;
+  if (!bucket) throw new StorageError(`Enter the R2 ${visibility} bucket name.`);
+  return bucket;
+}
+
+async function withR2<T>(fn: () => Promise<T>) {
+  try {
+    return await fn();
+  } catch (e) {
+    if (e instanceof StorageError) throw e;
+    throw new StorageError(`R2: ${e instanceof Error ? e.message : String(e)}`);
+  }
+}
+
+const isMissing = (e: unknown) => {
+  const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return err?.name === "NoSuchKey" || err?.name === "NotFound" || err?.$metadata?.httpStatusCode === 404;
+};
+
+/**
+ * Checks both buckets: uploads a small file to the public one and reads it back at the public
+ * address, then writes and reads one in the private bucket. Used by the admin "Test" button.
+ */
+export async function testR2(cfg: R2Config) {
+  if (!/^https?:\/\//.test(cfg.publicBaseUrl)) throw new StorageError("Public address must start with https://");
+  if (!cfg.publicBucket || !cfg.privateBucket) throw new StorageError("Enter both bucket names.");
+  if (cfg.publicBucket === cfg.privateBucket) throw new StorageError("Use two different buckets: anything in a public bucket can be downloaded by anyone.");
+  const client = r2Client(cfg);
+  const name = `myplug-test-${Date.now()}.txt`;
+  await withR2(async () => {
+    await client.send(new PutObjectCommand({ Bucket: cfg.publicBucket, Key: name, Body: "MyPlug storage test", ContentType: "text/plain" }));
+    const res = await fetch(`${cfg.publicBaseUrl}/${name}`).catch(() => null);
+    await client.send(new DeleteObjectCommand({ Bucket: cfg.publicBucket, Key: name }));
+    if (!res?.ok) {
+      throw new StorageError(
+        `Uploaded to ${cfg.publicBucket}, but ${cfg.publicBaseUrl}/${name} wasn't reachable (${res ? res.status : "no response"}). Check the bucket's public access and the public address.`,
+      );
+    }
+    await client.send(new PutObjectCommand({ Bucket: cfg.privateBucket, Key: name, Body: "MyPlug storage test", ContentType: "text/plain" }));
+    await client.send(new HeadObjectCommand({ Bucket: cfg.privateBucket, Key: name }));
+    await client.send(new DeleteObjectCommand({ Bucket: cfg.privateBucket, Key: name }));
+  });
 }
 
 // ---------------------------------------------------------------- FTP
@@ -157,9 +279,12 @@ function ftpFolder(ftp: FtpConfig, visibility: Visibility) {
 
 const blobPath = (visibility: Visibility, name: string) => (visibility === "private" ? `private/${name}` : name);
 
+/** The saved connection details for every backend. */
+export type StorageConfig = { ftp: FtpConfig; r2: R2Config };
+
 /**
  * Writes a file to a backend and returns its reference: a public URL, or for private files
- * a key saying where it lives ("blob:…", "ftp:…" or "local:…").
+ * a key saying where it lives ("blob:…", "ftp:…", "r2:…" or "local:…").
  */
 export async function writeToBackend(
   target: ActiveBackend,
@@ -167,9 +292,26 @@ export async function writeToBackend(
   name: string,
   body: File | Blob | Readable,
   contentType: string,
-  ftp: FtpConfig,
+  { ftp, r2 }: StorageConfig,
   { overwrite = false, multipart = false } = {},
 ) {
+  if (target === "r2") {
+    const client = r2Client(r2);
+    const Bucket = r2Bucket(r2, visibility);
+    if (visibility === "public" && !/^https?:\/\//.test(r2.publicBaseUrl)) throw new StorageError("Enter the R2 public bucket's address in System settings.");
+    const data = body instanceof Readable ? body : Buffer.from(await body.arrayBuffer());
+    await withR2(() =>
+      // Small files go up in one request; large or streamed ones in parts.
+      new Upload({
+        client,
+        params: { Bucket, Key: name, Body: data, ContentType: contentType, CacheControl: visibility === "public" ? "public, max-age=31536000, immutable" : "private, no-store" },
+        queueSize: 2,
+        partSize: 8 * 1024 * 1024,
+      }).done(),
+    );
+    return visibility === "public" ? `${r2.publicBaseUrl}/${name}` : `r2:${name}`;
+  }
+
   if (target === "blob") {
     if (!process.env.BLOB_READ_WRITE_TOKEN) throw new StorageError("Vercel Blob is selected but BLOB_READ_WRITE_TOKEN is missing.");
     const blob = await put(blobPath(visibility, name), body, { access: visibility, contentType, allowOverwrite: overwrite, multipart });
@@ -190,7 +332,7 @@ export async function writeToBackend(
     return visibility === "public" ? `${ftp.publicBaseUrl}/${name}` : `ftp:${name}`;
   }
 
-  if (process.env.VERCEL) throw new StorageError("File storage is not configured. Choose Vercel Blob or FTP in Admin → System settings.");
+  if (process.env.VERCEL) throw new StorageError("File storage is not configured. Choose Vercel Blob, FTP or Cloudflare R2 in Admin → System settings.");
   const file = path.join(visibility === "public" ? PUBLIC_DIR : PRIVATE_DIR, name);
   await mkdir(path.dirname(file), { recursive: true });
   if (body instanceof Readable) await pipeline(body, createWriteStream(file));
@@ -201,7 +343,7 @@ export async function writeToBackend(
 type StoredFile = { backend: ActiveBackend; visibility: Visibility; name: string; ref: string };
 
 /** Opens a stored file for reading, wherever it currently lives. */
-export async function openStoredFile(file: StoredFile, ftp: FtpConfig): Promise<Readable> {
+export async function openStoredFile(file: StoredFile, { ftp, r2 }: StorageConfig): Promise<Readable> {
   if (file.backend === "local") {
     const local = path.join(file.visibility === "public" ? PUBLIC_DIR : PRIVATE_DIR, file.name);
     await stat(local); // fails straight away if it's missing
@@ -220,6 +362,12 @@ export async function openStoredFile(file: StoredFile, ftp: FtpConfig): Promise<
     return Readable.fromWeb(result.stream as Parameters<typeof Readable.fromWeb>[0]);
   }
 
+  if (file.backend === "r2") {
+    const res = await withR2(() => r2Client(r2).send(new GetObjectCommand({ Bucket: r2Bucket(r2, "private"), Key: file.name })));
+    if (!res.Body) throw new StorageError(`Private file ${file.name} wasn't found in R2.`);
+    return res.Body as Readable;
+  }
+
   const sink = new PassThrough();
   const remote = path.posix.join(privateFtpRoot(ftp), file.name);
   void withFtp(ftp, (client) => client.downloadTo(sink, remote)).catch((e) => sink.destroy(e));
@@ -227,7 +375,11 @@ export async function openStoredFile(file: StoredFile, ftp: FtpConfig): Promise<
 }
 
 /** The size a backend reports for a file, used to confirm a copy arrived whole. */
-export async function storedSize(target: ActiveBackend, visibility: Visibility, name: string, ref: string, ftp: FtpConfig) {
+export async function storedSize(target: ActiveBackend, visibility: Visibility, name: string, ref: string, { ftp, r2 }: StorageConfig) {
+  if (target === "r2") {
+    const res = await withR2(() => r2Client(r2).send(new HeadObjectCommand({ Bucket: r2Bucket(r2, visibility), Key: name })));
+    return res.ContentLength ?? -1;
+  }
   if (target === "blob") return (await head(visibility === "public" ? ref : blobPath(visibility, name))).size;
   if (target === "ftp") return withFtp(ftp, (client) => client.size(path.posix.join(ftpFolder(ftp, visibility), name)));
   return (await stat(path.join(visibility === "public" ? PUBLIC_DIR : PRIVATE_DIR, name))).size;
@@ -240,9 +392,9 @@ export async function registerStoredFile(file: StoredFile & { contentType?: stri
 
 /** Stores a file under `name` (see storagePath) and returns its public URL. */
 export async function storeFile(name: string, file: File) {
-  const { backend, ftp } = await getStorageSettings();
+  const { backend, ...config } = await getStorageSettings();
   const target = resolveBackend(backend);
-  const ref = await writeToBackend(target, "public", name, file, file.type, ftp);
+  const ref = await writeToBackend(target, "public", name, file, file.type, config);
   await registerStoredFile({ backend: target, visibility: "public", name, ref, contentType: file.type, sizeBytes: file.size });
   return ref;
 }
@@ -250,15 +402,16 @@ export async function storeFile(name: string, file: File) {
 /** Whether a URL a form sends back (e.g. a gallery image) points at a file we stored. */
 export async function isOwnUpload(url: string) {
   if (/^\/uploads\/[\w/.-]+$/.test(url) && !url.includes("..")) return true; // local development
-  const { ftp } = await getStorageSettings();
+  const { ftp, r2 } = await getStorageSettings();
   if (ftp.publicBaseUrl && url.startsWith(`${ftp.publicBaseUrl}/`)) return true;
+  if (r2.publicBaseUrl && url.startsWith(`${r2.publicBaseUrl}/`)) return true;
   try {
     const u = new URL(url);
     if (u.protocol === "https:" && u.hostname.endsWith(".public.blob.vercel-storage.com")) return true;
   } catch {
     return false;
   }
-  // Still ours if the FTP address has changed since it was uploaded.
+  // Still ours if the FTP or R2 address has changed since it was uploaded.
   const known = await db.query.storedFiles.findFirst({
     where: and(eq(schema.storedFiles.ref, url), eq(schema.storedFiles.visibility, "public")),
     columns: { id: true },
@@ -271,12 +424,12 @@ export async function isOwnUpload(url: string) {
 /**
  * Sensitive or paid files (ID photos, licences, purchased media) are never given a public
  * address. They're stored privately and served only through routes that check permission.
- * The returned key says where the file lives: "blob:…", "ftp:…" or "local:…".
+ * The returned key says where the file lives: "blob:…", "ftp:…", "r2:…" or "local:…".
  */
 export async function storePrivateFile(name: string, file: File | Blob) {
-  const { backend, ftp } = await getStorageSettings();
+  const { backend, ...config } = await getStorageSettings();
   const target = resolveBackend(backend);
-  const ref = await writeToBackend(target, "private", name, file, file.type, ftp);
+  const ref = await writeToBackend(target, "private", name, file, file.type, config);
   await registerStoredFile({ backend: target, visibility: "private", name, ref, contentType: file.type, sizeBytes: file.size });
   return ref;
 }
@@ -315,6 +468,27 @@ export async function privateFileResponse(key: string, request: Request, extraHe
         ...(result.headers.get("content-length") ? { "Content-Length": result.headers.get("content-length")! } : {}),
       },
     });
+  }
+
+  if (scheme === "r2") {
+    const { r2 } = await getStorageSettings();
+    try {
+      const res = await r2Client(r2).send(new GetObjectCommand({ Bucket: r2Bucket(r2, "private"), Key: name, Range: range ?? undefined }));
+      if (!res.Body) return new Response("Not found", { status: 404 });
+      return new Response(Readable.toWeb(res.Body as Readable) as ReadableStream, {
+        status: res.ContentRange ? 206 : 200,
+        headers: {
+          ...base,
+          "Accept-Ranges": "bytes",
+          ...(res.ContentRange ? { "Content-Range": res.ContentRange } : {}),
+          ...(res.ContentLength !== undefined ? { "Content-Length": String(res.ContentLength) } : {}),
+        },
+      });
+    } catch (e) {
+      if (isMissing(e)) return new Response("Not found", { status: 404 });
+      if ((e as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode === 416) return new Response(null, { status: 416 });
+      throw e;
+    }
   }
 
   if (scheme === "local") {

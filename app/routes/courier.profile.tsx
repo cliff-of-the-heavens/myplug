@@ -1,4 +1,5 @@
 import { PlusIcon, ShieldCheckIcon, Trash2Icon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { useState } from "react";
 import { Form, Link, useNavigation } from "react-router";
 import { ImageDropzone, PROOF_TYPES } from "~/components/image-dropzone";
@@ -65,7 +66,7 @@ export default function CourierProfile({ loaderData, actionData }: Route.Compone
         }
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
       {courier.reviewNote ? <p className="mb-4 rounded-lg bg-muted px-3 py-2 text-sm">Note from MyPlug: {courier.reviewNote}</p> : null}

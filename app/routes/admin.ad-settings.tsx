@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { useNavigation, Form } from "react-router";
 import { FormError, PageHeader } from "~/components/page";
 import { Button } from "~/components/ui/button";
@@ -63,7 +64,7 @@ export default function AdSettings({ loaderData, actionData }: Route.ComponentPr
         description="The advertised bands merchants can buy, and how they should pay you. New prices apply to new invoices only."
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <div className="mb-4">
         <FormError error={actionData && "error" in actionData ? actionData.error : null} />

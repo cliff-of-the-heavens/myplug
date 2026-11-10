@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { CheckIcon, CrownIcon, MegaphoneIcon, RocketIcon, SparklesIcon, WandSparklesIcon, XIcon } from "lucide-react";
 import { useState } from "react";
 import { Form, useNavigation } from "react-router";
@@ -206,7 +207,7 @@ export default function Promote({ loaderData, actionData }: Route.ComponentProps
         description="Choose a band, or ask for a custom advert. Adverts go live once your payment has been approved."
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 

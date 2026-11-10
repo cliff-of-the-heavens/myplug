@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { PercentIcon, TagIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { Form, useNavigation } from "react-router";
@@ -86,7 +87,7 @@ export default function Deals({ loaderData, actionData }: Route.ComponentProps) 
   return (
     <>
       <PageHeader title="Deals & promo codes" description="Run sales that apply automatically, or give customers a code to use at checkout." />
-      {actionData && "ok" in actionData ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success" className="mb-4">{actionData.ok}</Notice> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 
       <Card className="mt-4">

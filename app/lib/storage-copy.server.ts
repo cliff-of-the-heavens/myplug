@@ -2,7 +2,7 @@ import { and, asc, desc, eq, gte, isNull, lt, ne, or, sql, type SQL } from "driz
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { Transform } from "node:stream";
 import { db, schema } from "~/db/client.server";
-import { getStorageSettings, openStoredFile, StorageError, storedSize, testFtp, writeToBackend, type ActiveBackend, type FtpConfig } from "./storage.server";
+import { getStorageSettings, openStoredFile, StorageError, storedSize, testFtp, testR2, writeToBackend, type ActiveBackend, type StorageConfig } from "./storage.server";
 
 const { storedFiles, storageCopyJobs: jobs } = schema;
 type FileRow = typeof storedFiles.$inferSelect;
@@ -67,7 +67,7 @@ async function switchReferences(file: FileRow, target: ActiveBackend, newRef: st
   `);
 }
 
-async function copyOne(file: FileRow, target: ActiveBackend, ftp: FtpConfig) {
+async function copyOne(file: FileRow, target: ActiveBackend, config: StorageConfig) {
   let bytes = 0;
   const counter = new Transform({
     transform(chunk: Buffer, _enc, done) {
@@ -76,7 +76,7 @@ async function copyOne(file: FileRow, target: ActiveBackend, ftp: FtpConfig) {
     },
   });
   counter.on("error", () => {}); // reported through readFailed or the write below
-  const source = await openStoredFile(file, ftp);
+  const source = await openStoredFile(file, config);
   // A read can fail before the upload is listening, so it's watched separately from the write.
   const readFailed = new Promise<never>((_, reject) => {
     source.once("error", (e) => {
@@ -89,14 +89,14 @@ async function copyOne(file: FileRow, target: ActiveBackend, ftp: FtpConfig) {
 
   const multipart = file.sizeBytes === null || file.sizeBytes > MULTIPART_BYTES;
   const contentType = file.contentType ?? "application/octet-stream";
-  const writing = writeToBackend(target, file.visibility, file.name, counter, contentType, ftp, { overwrite: true, multipart });
+  const writing = writeToBackend(target, file.visibility, file.name, counter, contentType, config, { overwrite: true, multipart });
   writing.catch(() => {});
   const newRef = await Promise.race([writing, readFailed]).catch((e) => {
     source.destroy(); // stop reading from the old location
     throw e;
   });
 
-  const arrived = await storedSize(target, file.visibility, file.name, newRef, ftp);
+  const arrived = await storedSize(target, file.visibility, file.name, newRef, config);
   if (arrived !== bytes || (file.sizeBytes !== null && arrived !== file.sizeBytes)) {
     throw new StorageError(`The copy is incomplete: ${arrived} bytes arrived, expected ${file.sizeBytes ?? bytes}.`);
   }
@@ -130,7 +130,7 @@ export async function runCopyBatch({ budgetMs, maxFiles }: { budgetMs: number; m
 
   const result = { ran: true, copied: 0, failed: 0 };
   try {
-    const { ftp } = await getStorageSettings();
+    const { backend: _, ...config } = await getStorageSettings();
     const deadline = Date.now() + budgetMs;
     while (Date.now() < deadline && result.copied + result.failed < maxFiles) {
       const current = await db.query.storageCopyJobs.findFirst({ where: eq(jobs.id, job.id), columns: { status: true } });
@@ -144,7 +144,7 @@ export async function runCopyBatch({ budgetMs, maxFiles }: { budgetMs: number; m
       // Counted first, so a file that crashes the function can't be retried forever.
       await db.update(storedFiles).set({ copyAttempts: sql`${storedFiles.copyAttempts} + 1` }).where(eq(storedFiles.id, file.id));
       try {
-        await copyOne(file, job.target, ftp);
+        await copyOne(file, job.target, config);
         result.copied++;
       } catch (e) {
         result.failed++;
@@ -160,10 +160,12 @@ export async function runCopyBatch({ budgetMs, maxFiles }: { budgetMs: number; m
 
 /** Starts copying everything not already on `target`. Starting again retries files that failed. */
 export async function startCopyJob(target: ActiveBackend) {
-  const { ftp } = await getStorageSettings();
+  const { ftp, r2 } = await getStorageSettings();
   if (target === "blob" && !process.env.BLOB_READ_WRITE_TOKEN) throw new StorageError("Connect Vercel Blob first: BLOB_READ_WRITE_TOKEN is missing.");
   if (target === "local" && process.env.VERCEL) throw new StorageError("Local disk isn't available on Vercel.");
-  if (target === "ftp") await testFtp(ftp); // proves it can write and that the files will be reachable
+  // These prove it can write and that the files will be reachable.
+  if (target === "ftp") await testFtp(ftp);
+  if (target === "r2") await testR2(r2);
 
   const running = await db.query.storageCopyJobs.findFirst({ where: eq(jobs.status, "running"), columns: { id: true } });
   if (running) throw new StorageError("A copy is already running.");

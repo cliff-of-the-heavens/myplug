@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { data, Form, redirect, useNavigation } from "react-router";
 import { CodeInput } from "~/components/code-input";
 import { FlashMessage, FormError } from "~/components/page";
@@ -67,7 +68,7 @@ export default function VerifyCode({ loaderData, actionData }: Route.ComponentPr
           <FlashMessage flash={flash} />
           <Form method="post" className="grid gap-4">
             <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-            {actionData && "sent" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.sent}</p> : null}
+            {actionData && "sent" in actionData ? <Notice tone="success">{actionData.sent}</Notice> : null}
             <Field label="6-digit code" className="text-center">
               <CodeInput autoFocus resetOn={actionData} />
             </Field>

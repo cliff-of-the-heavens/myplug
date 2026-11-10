@@ -1,4 +1,5 @@
 import { EyeOffIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { Form, useNavigation } from "react-router";
 import { Container, FormError, PageHeader } from "~/components/page";
 import { PaymentReportForm } from "~/components/payment-report";
@@ -56,7 +57,7 @@ export default function AdFree({ loaderData, actionData }: Route.ComponentProps)
     <Container className="grid max-w-3xl gap-6 py-8">
       <PageHeader title="Ad-free browsing" description="Hide the banner strips and side banners while you shop." />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
 
       {until ? (
         <p className="flex items-center gap-2 rounded-2xl bg-success/15 p-4 font-semibold text-success">

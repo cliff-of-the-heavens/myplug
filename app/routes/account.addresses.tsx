@@ -1,4 +1,5 @@
 import { MapPinIcon, PlusIcon, StarIcon, Trash2Icon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { AddressFields } from "~/components/address-fields";
@@ -62,7 +63,7 @@ export default function Addresses({ loaderData, actionData }: Route.ComponentPro
         }
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 

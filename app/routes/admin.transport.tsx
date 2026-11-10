@@ -1,4 +1,5 @@
 import { CarFrontIcon, ClockIcon, PhoneIcon, TruckIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { EmptyState, FormError, PageHeader } from "~/components/page";
 import { Stars } from "~/components/rating";
@@ -90,7 +91,7 @@ export default function AdminTransport({ loaderData, actionData }: Route.Compone
   return (
     <div className="grid gap-6">
       <PageHeader title="Transport" description="Rides, moves, parcels and car hire between customers and couriers. Step in on fake requests, disputes and misleading cars." />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 
       <div>

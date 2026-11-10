@@ -1,4 +1,5 @@
 import { ThumbsDownIcon, ThumbsUpIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { FormError, PageHeader } from "~/components/page";
 import { Stars } from "~/components/rating";
@@ -68,7 +69,7 @@ export default function AdminReviews({ loaderData, actionData }: Route.Component
     <div className="grid gap-6">
       <PageHeader title="Reviews" description="Merchants and couriers can ask you to check a review. Take down abuse, threats, lies and spam; keep honest criticism." />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
 
       <div className="flex gap-2 border-b pb-3">
         {(

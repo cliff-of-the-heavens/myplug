@@ -765,7 +765,7 @@ export const storedFiles = pgTable(
   "stored_files",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    backend: text("backend").$type<"blob" | "ftp" | "local">().notNull(),
+    backend: text("backend").$type<"blob" | "ftp" | "r2" | "local">().notNull(),
     visibility: text("visibility").$type<"public" | "private">().notNull(),
     name: text("name").notNull(), // path inside the storage area, e.g. products/2026/11/3f/<uuid>.webp
     ref: text("ref").notNull().unique(),
@@ -786,7 +786,7 @@ export const storageCopyJobs = pgTable(
   "storage_copy_jobs",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    target: text("target").$type<"blob" | "ftp" | "local">().notNull(),
+    target: text("target").$type<"blob" | "ftp" | "r2" | "local">().notNull(),
     status: text("status").$type<"running" | "done" | "stopped">().notNull().default("running"),
     lockedUntil: timestamp("locked_until", { withTimezone: true }), // only one worker at a time
     lastRunAt: timestamp("last_run_at", { withTimezone: true }),

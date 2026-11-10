@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, inArray, or, sql } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { BadgeCheckIcon, CheckIcon, ExternalLinkIcon, StoreIcon, XIcon } from "lucide-react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { AccountActions, StoreStatusBadge } from "~/components/account-actions";
@@ -227,7 +228,7 @@ export default function AdminMerchants({ loaderData, actionData }: Route.Compone
   return (
     <>
       <PageHeader title="Merchants" description="Approve new stores, verify their business documents, and step in when a store breaks the rules." />
-      {actionData && "ok" in actionData && actionData.ok ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData && actionData.ok ? <Notice tone="success" className="mb-4">{actionData.ok}</Notice> : null}
       {actionData && "error" in actionData && actionData.error ? <p className="mb-4 rounded-lg bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">{actionData.error}</p> : null}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="scrollbar-none flex gap-1 overflow-x-auto">

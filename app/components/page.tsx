@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
+import { Notice } from "./notice";
 
 export function PageHeader({
   title,
@@ -51,23 +52,13 @@ export function Container({ className, ...props }: React.ComponentProps<"div">) 
 export function FlashMessage({ flash }: { flash: { tone: "success" | "warning"; text: string } | null }) {
   if (!flash) return null;
   return (
-    <p
-      role="status"
-      className={cn(
-        "mb-4 rounded-lg px-3 py-2 text-sm font-medium",
-        flash.tone === "success" ? "bg-success/15 text-success" : "bg-warning/20 text-highlight-foreground dark:text-warning",
-      )}
-    >
+    <Notice tone={flash.tone} className="mb-4">
       {flash.text}
-    </p>
+    </Notice>
   );
 }
 
 export function FormError({ error }: { error?: string | null }) {
   if (!error) return null;
-  return (
-    <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
-      {error}
-    </p>
-  );
+  return <Notice tone="error">{error}</Notice>;
 }

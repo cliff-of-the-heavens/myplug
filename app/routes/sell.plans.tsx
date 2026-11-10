@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { CheckIcon, RepeatIcon, XIcon } from "lucide-react";
 import { Form, Link, useNavigation } from "react-router";
 import { EmptyState, FormError, PageHeader } from "~/components/page";
@@ -55,7 +56,7 @@ export default function SellPlans({ loaderData, actionData }: Route.ComponentPro
         description="Customers' regular deliveries. Each delivery is created as a normal order on its day, so it shows up under Orders."
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 

@@ -1,4 +1,5 @@
 import { PlusIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { useState } from "react";
 import { Form, Link, redirect, useNavigation } from "react-router";
 import { CreativeFields } from "~/components/banner-forms";
@@ -67,7 +68,7 @@ export default function AdminBanners({ loaderData, actionData }: Route.Component
         }
       />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
 
       <ExternalForm placements={placements} min={loaderData.today} busy={busy} />
 

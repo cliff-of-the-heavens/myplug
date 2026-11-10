@@ -1,4 +1,5 @@
 import { ShieldCheckIcon, SmartphoneIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { Form, useNavigation } from "react-router";
 import { CodeInput } from "~/components/code-input";
 import { Container, FormError, PageHeader } from "~/components/page";
@@ -117,8 +118,8 @@ export default function Security({ loaderData, actionData }: Route.ComponentProp
   return (
     <Container className="max-w-xl py-8">
       <PageHeader title="Two-step sign-in" description="A code as well as your password, so a stolen password isn't enough to get in." />
-      {result?.ok ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{result.ok}</p> : null}
-      {result?.notice ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{result.notice}</p> : null}
+      {result?.ok ? <Notice tone="success" className="mb-4">{result.ok}</Notice> : null}
+      {result?.notice ? <Notice tone="success" className="mb-4">{result.notice}</Notice> : null}
       <div className="mb-4">
         <FormError error={result?.error} />
       </div>

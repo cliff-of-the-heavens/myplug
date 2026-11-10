@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { GiftIcon, ScanLineIcon } from "lucide-react";
 import { Form, useNavigation } from "react-router";
 import { FormError, PageHeader } from "~/components/page";
@@ -80,7 +81,7 @@ export default function SellCoupons({ loaderData, actionData }: Route.ComponentP
   return (
     <>
       <PageHeader title="Gift coupons" description="Customers buy coupons from your store and give them to anyone. They spend them at checkout or at your counter." />
-      {actionData && "ok" in actionData ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success" className="mb-4">{actionData.ok}</Notice> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 
       <Card className="mt-4 border-primary/40">

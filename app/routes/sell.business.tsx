@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { ArrowLeftIcon, BadgeCheckIcon, FileTextIcon, Trash2Icon } from "lucide-react";
 import { Form, Link, useNavigation } from "react-router";
 import { ImageDropzone, PROOF_TYPES } from "~/components/image-dropzone";
@@ -110,7 +111,7 @@ export default function Business({ loaderData, actionData }: Route.ComponentProp
           {trade ? "national ID" : "registration certificate"} below. Once an admin has checked them, your listings show a green tick.
         </p>
       )}
-      {actionData && "ok" in actionData ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success" className="mb-4">{actionData.ok}</Notice> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 
       <Card className="mb-6">

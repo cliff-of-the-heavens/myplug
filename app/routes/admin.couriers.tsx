@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { BanIcon, BikeIcon, CheckIcon, FileTextIcon, RotateCcwIcon, XIcon } from "lucide-react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { EmptyState, FormError, PageHeader } from "~/components/page";
@@ -81,7 +82,7 @@ export default function AdminCouriers({ loaderData, actionData }: Route.Componen
   return (
     <>
       <PageHeader title="Couriers" description="Check each courier's face photo against their ID before approving them." />
-      {actionData && "ok" in actionData ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success" className="mb-4">{actionData.ok}</Notice> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
       <div className="my-4 flex flex-wrap items-center gap-2">
         {[null, ...STATUSES].map((t) => (

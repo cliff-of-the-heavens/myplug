@@ -1,4 +1,5 @@
 import { Form, Link, useNavigation } from "react-router";
+import { Notice } from "~/components/notice";
 import { FormError, PageHeader } from "~/components/page";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -66,7 +67,7 @@ export default function AdminAnalytics({ loaderData, actionData }: Route.Compone
         }
       />
       <FormError error={actionData && "error" in actionData ? (actionData.error as string) : null} />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
       {!settings.enabled ? <p className="rounded-lg bg-warning/20 px-3 py-2 text-sm">Analytics is switched off: nothing new is being recorded.</p> : null}
 
       <div className="grid gap-3 sm:grid-cols-4">

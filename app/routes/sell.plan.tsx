@@ -1,4 +1,5 @@
 import { Form, useNavigation } from "react-router";
+import { Notice } from "~/components/notice";
 import { FormError, PageHeader } from "~/components/page";
 import { PaymentReportForm } from "~/components/payment-report";
 import { Badge } from "~/components/ui/badge";
@@ -57,7 +58,7 @@ export default function SellPlan({ loaderData, actionData }: Route.ComponentProp
     <div className="grid gap-6">
       <PageHeader title="Store plan" description="Your plan sets how many listings your store can have. Archived listings don't count." />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
 
       <Card>
         <CardContent className="grid gap-3 pt-5">

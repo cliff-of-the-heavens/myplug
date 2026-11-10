@@ -1,4 +1,5 @@
 import { Form, Link, useNavigation } from "react-router";
+import { Notice } from "~/components/notice";
 import { FormError, PageHeader } from "~/components/page";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
@@ -79,7 +80,7 @@ export default function AdminBands({ loaderData, actionData }: Route.ComponentPr
     <div className="grid gap-6">
       <PageHeader title="Listing plans" description="How many items each store can list, what bigger plans cost, and how many photos a listing can have." />
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
-      {actionData && "ok" in actionData ? <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success">{actionData.ok}</Notice> : null}
 
       {requests.length ? (
         <Card className="border-primary/40">

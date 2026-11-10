@@ -1,4 +1,5 @@
 import { ArrowRightLeftIcon, HardDriveIcon, PlayIcon, PlugZapIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { useEffect, useState } from "react";
 import { Form, useNavigation } from "react-router";
 import { FormError, PageHeader } from "~/components/page";
@@ -17,7 +18,9 @@ import {
   saveStorageSettings,
   StorageError,
   testFtp,
+  testR2,
   type FtpConfig,
+  type R2Config,
   type StorageBackend,
 } from "~/lib/storage.server";
 import { getCopyStatus, startCopyJob, stopCopyJob, type CopyStatus } from "~/lib/storage-copy.server";
@@ -28,7 +31,7 @@ export const meta: Route.MetaFunction = () => [{ title: "System settings · Admi
 
 export async function loader({ request }: Route.LoaderArgs) {
   await requireAdmin(request);
-  const [{ backend, ftp }, retention, listings, images, copy] = await Promise.all([getStorageSettings(), getRetentionSettings(), getListingRetention(), getImageSettings(), getCopyStatus()]);
+  const [{ backend, ftp, r2 }, retention, listings, images, copy] = await Promise.all([getStorageSettings(), getRetentionSettings(), getListingRetention(), getImageSettings(), getCopyStatus()]);
   const candidates = await retentionCandidates(retention);
   return {
     backend,
@@ -36,8 +39,9 @@ export async function loader({ request }: Route.LoaderArgs) {
     blobConfigured: !!process.env.BLOB_READ_WRITE_TOKEN,
     canUseLocal: !process.env.VERCEL,
     copy,
-    // Never send the password back to the browser; only whether one is saved.
+    // Never send the password or secret back to the browser; only whether one is saved.
     ftp: { ...ftp, password: undefined, hasPassword: !!ftp.password },
+    r2: { ...r2, secretAccessKey: undefined, hasSecret: !!r2.secretAccessKey },
     retention,
     listings,
     images,
@@ -62,36 +66,62 @@ function ftpFromForm(form: FormData): Omit<FtpConfig, "password"> & { password?:
   };
 }
 
+function r2FromForm(form: FormData): Omit<R2Config, "secretAccessKey"> & { secretAccessKey?: string } {
+  const bucket = (name: string) => str(form.get(name)).toLowerCase().slice(0, 63);
+  return {
+    accountId: str(form.get("r2AccountId")).slice(0, 64),
+    accessKeyId: str(form.get("r2AccessKeyId")).slice(0, 128),
+    secretAccessKey: str(form.get("r2Secret")) || undefined,
+    jurisdiction: form.get("r2Jurisdiction") === "eu" ? "eu" : "default",
+    publicBucket: bucket("r2PublicBucket"),
+    privateBucket: bucket("r2PrivateBucket"),
+    publicBaseUrl: str(form.get("r2PublicBaseUrl")).replace(/\/$/, ""),
+    endpoint: str(form.get("r2Endpoint")).replace(/\/$/, ""),
+  };
+}
+
 export async function action({ request }: Route.ActionArgs) {
   await requireAdmin(request);
   const form = await request.formData();
   const intent = form.get("intent");
 
-  if (intent === "storage" || intent === "test-ftp") {
+  if (intent === "storage" || intent === "test-ftp" || intent === "test-r2") {
     const backend = str(form.get("backend")) as StorageBackend;
-    if (!["auto", "blob", "ftp", "local"].includes(backend)) return { error: "Choose a storage option." };
+    if (!["auto", "blob", "ftp", "r2", "local"].includes(backend)) return { error: "Choose a storage option." };
     const ftp = ftpFromForm(form);
+    const r2 = r2FromForm(form);
     if (backend === "ftp" || intent === "test-ftp") {
       if (!ftp.host || !ftp.user) return { error: "Enter the FTP host and username." };
       if (!/^https?:\/\//.test(ftp.publicBaseUrl)) return { error: "Public base URL must start with http:// or https://" };
     }
-    if (intent === "test-ftp") {
+    if (backend === "r2" || intent === "test-r2") {
+      if (!(r2.accountId || r2.endpoint) || !r2.accessKeyId) return { error: "Enter the R2 account ID and access key ID." };
+      if (!r2.publicBucket || !r2.privateBucket) return { error: "Enter both R2 bucket names." };
+      if (r2.publicBucket === r2.privateBucket) return { error: "Use two different buckets: anything in the public bucket can be downloaded by anyone." };
+      if (!/^https?:\/\//.test(r2.publicBaseUrl)) return { error: "The public bucket address must start with https://" };
+    }
+    if (intent === "test-ftp" || intent === "test-r2") {
       const saved = await getStorageSettings();
       try {
-        await testFtp({ ...ftp, password: ftp.password ?? saved.ftp.password });
-        return { ok: "FTP works: a test file was uploaded, read back over HTTP and removed." };
+        if (intent === "test-ftp") {
+          await testFtp({ ...ftp, password: ftp.password ?? saved.ftp.password });
+          return { ok: "FTP works: a test file was uploaded, read back over HTTP and removed." };
+        }
+        await testR2({ ...r2, secretAccessKey: r2.secretAccessKey ?? saved.r2.secretAccessKey });
+        return { ok: "R2 works: test files were written to both buckets, the public one was read back at its address, and both were removed." };
       } catch (e) {
         if (e instanceof StorageError) return { error: e.message };
         throw e;
       }
     }
-    await saveStorageSettings(backend, backend === "ftp" ? ftp : null);
+    if (backend === "r2" && !r2.secretAccessKey && !(await getStorageSettings()).r2.secretAccessKey) return { error: "Enter the R2 secret access key." };
+    await saveStorageSettings(backend, { ...(backend === "ftp" ? { ftp } : {}), ...(backend === "r2" ? { r2 } : {}) });
     return { ok: "Storage settings saved. New uploads use them straight away." };
   }
 
   if (intent === "copy-start") {
     const target = str(form.get("target"));
-    if (target !== "blob" && target !== "ftp" && target !== "local") return { error: "Choose where to copy the files." };
+    if (target !== "blob" && target !== "ftp" && target !== "r2" && target !== "local") return { error: "Choose where to copy the files." };
     try {
       await startCopyJob(target);
       return { ok: "Copy started. It runs in small batches while this page is open, and a batch runs with the daily job." };
@@ -140,6 +170,7 @@ const BACKENDS: { value: StorageBackend; label: string; text: string }[] = [
   { value: "auto", label: "Automatic", text: "Vercel Blob when configured, otherwise local files (development)" },
   { value: "blob", label: "Vercel Blob", text: "Vercel's file storage (needs BLOB_READ_WRITE_TOKEN)" },
   { value: "ftp", label: "FTP / FTPS server", text: "Your own server, e.g. a hosting account or another data centre" },
+  { value: "r2", label: "Cloudflare R2", text: "Cloudflare's storage: no download fees, grows with the site" },
   { value: "local", label: "Local disk", text: "public/uploads, for development only" },
 ];
 
@@ -176,7 +207,7 @@ function StorageCopyCard({ initial, canUseLocal, busy }: { initial: CopyStatus; 
   }, [running, jobId]);
 
   const percent = status.total ? Math.round((status.onTarget / status.total) * 100) : 100;
-  const targets = BACKENDS.filter((b) => b.value === "blob" || b.value === "ftp" || (b.value === "local" && canUseLocal));
+  const targets = BACKENDS.filter((b) => b.value === "blob" || b.value === "ftp" || b.value === "r2" || (b.value === "local" && canUseLocal));
 
   return (
     <Card className="mt-6">
@@ -256,7 +287,7 @@ function StorageCopyCard({ initial, canUseLocal, busy }: { initial: CopyStatus; 
 }
 
 export default function SystemSettings({ loaderData, actionData }: Route.ComponentProps) {
-  const { backend, activeBackend, blobConfigured, canUseLocal, copy, ftp, retention, preview, listings, images } = loaderData;
+  const { backend, activeBackend, blobConfigured, canUseLocal, copy, ftp, r2, retention, preview, listings, images } = loaderData;
   const [choice, setChoice] = useState<StorageBackend>(backend);
   const busy = useNavigation().state !== "idle";
 
@@ -264,7 +295,7 @@ export default function SystemSettings({ loaderData, actionData }: Route.Compone
     <>
       <PageHeader title="System settings" description="Where uploaded files are kept, and how long inactive stores are kept." />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <div className="mb-4">
         <FormError error={actionData && "error" in actionData ? actionData.error : null} />
@@ -333,12 +364,49 @@ export default function SystemSettings({ loaderData, actionData }: Route.Compone
               </div>
             ) : null}
 
+            {choice === "r2" ? (
+              <div className="grid gap-3 rounded-xl bg-muted/50 p-4 sm:grid-cols-2">
+                <Field label="Account ID" hint="Cloudflare dashboard → R2 → Account details">
+                  <Input name="r2AccountId" defaultValue={r2.accountId} autoComplete="off" />
+                </Field>
+                <Field label="Jurisdiction" hint="Choose EU only if the buckets were created with EU jurisdiction">
+                  <NativeSelect name="r2Jurisdiction" defaultValue={r2.jurisdiction}>
+                    <option value="default">Standard</option>
+                    <option value="eu">European Union</option>
+                  </NativeSelect>
+                </Field>
+                <Field label="Access key ID" hint="From an R2 API token with Object Read & Write">
+                  <Input name="r2AccessKeyId" defaultValue={r2.accessKeyId} autoComplete="off" required />
+                </Field>
+                <Field label="Secret access key" hint={r2.hasSecret ? "Saved (encrypted). Leave blank to keep it." : "Stored encrypted."}>
+                  <Input name="r2Secret" type="password" autoComplete="new-password" />
+                </Field>
+                <Field label="Public bucket" hint="Photos, logos, banners. Public access on">
+                  <Input name="r2PublicBucket" defaultValue={r2.publicBucket} placeholder="myplug-files" required />
+                </Field>
+                <Field label="Private bucket" hint="IDs, licences, paid files. Public access off">
+                  <Input name="r2PrivateBucket" defaultValue={r2.privateBucket} placeholder="myplug-private" required />
+                </Field>
+                <Field label="Public bucket address" hint="The custom domain connected to the public bucket" className="sm:col-span-2">
+                  <Input name="r2PublicBaseUrl" defaultValue={r2.publicBaseUrl} placeholder="https://files.myplugstore.com" required />
+                </Field>
+                <Field label="Custom endpoint (optional)" hint="Leave blank for Cloudflare R2. For another S3-compatible service only" className="sm:col-span-2">
+                  <Input name="r2Endpoint" defaultValue={r2.endpoint} placeholder="https://s3.example.com" autoComplete="off" />
+                </Field>
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  Use two buckets: everything in a public bucket can be downloaded by anyone, so private files go to a bucket that has no public
+                  access. Private files are served only through MyPlug after a permission check. "Test connection" writes a small file to each
+                  bucket and checks the public one at its address.
+                </p>
+              </div>
+            ) : null}
+
             <div className="flex flex-wrap gap-2">
               <Button type="submit" name="intent" value="storage" disabled={busy}>
                 Save storage settings
               </Button>
-              {choice === "ftp" ? (
-                <Button type="submit" name="intent" value="test-ftp" variant="outline" disabled={busy}>
+              {choice === "ftp" || choice === "r2" ? (
+                <Button type="submit" name="intent" value={choice === "ftp" ? "test-ftp" : "test-r2"} variant="outline" disabled={busy}>
                   <PlugZapIcon /> Test connection
                 </Button>
               ) : null}

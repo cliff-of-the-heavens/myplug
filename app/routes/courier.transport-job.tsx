@@ -1,4 +1,5 @@
 import { CheckIcon, PhoneIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { data, Form, Link, useNavigation } from "react-router";
 import { Container, FormError, PageHeader } from "~/components/page";
 import { SafeImage } from "~/components/safe-image";
@@ -55,7 +56,7 @@ export default function CourierTransportJob({ loaderData, actionData }: Route.Co
           </span>
         }
       />
-      {actionData && "ok" in actionData ? <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p> : null}
+      {actionData && "ok" in actionData ? <Notice tone="success" className="mb-4">{actionData.ok}</Notice> : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 
       <Card className="mb-6">

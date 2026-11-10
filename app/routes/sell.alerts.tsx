@@ -1,4 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { BellRingIcon } from "lucide-react";
 import { useState } from "react";
 import { Form, useNavigation } from "react-router";
@@ -88,7 +89,7 @@ export default function SellAlerts({ loaderData, actionData }: Route.ComponentPr
         description="Let customers who follow your store know about new arrivals, restocks and discounts. MyPlug sends the emails for you."
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <div className="mb-4">
         <FormError error={actionData && "error" in actionData ? actionData.error : null} />

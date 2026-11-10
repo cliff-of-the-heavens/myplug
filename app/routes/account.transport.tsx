@@ -1,4 +1,5 @@
 import { CarFrontIcon, PhoneIcon, TruckIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { Container, EmptyState, FormError, PageHeader } from "~/components/page";
 import { RateCourier } from "~/components/rate-courier";
@@ -57,7 +58,7 @@ export default function MyTransport({ loaderData, actionData }: Route.ComponentP
         }
       />
       {params.get("booked") ? (
-        <p className="rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">Booking requested. The owner will confirm it; you'll get a notification.</p>
+        <Notice tone="success">Booking requested. The owner will confirm it; you'll get a notification.</Notice>
       ) : null}
       {actionData && "error" in actionData && !actionData.rated ? <FormError error={actionData.error} /> : null}
 

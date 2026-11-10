@@ -1,4 +1,5 @@
 import { BikeIcon, CheckIcon, MapPinIcon, PackageIcon, PhoneIcon, StoreIcon, XIcon } from "lucide-react";
+import { Notice } from "~/components/notice";
 import { Form, Link, useNavigation } from "react-router";
 import { Container, EmptyState, FormError, PageHeader } from "~/components/page";
 import { OrderStatusBadge } from "~/components/status";
@@ -87,7 +88,7 @@ export default function CourierDashboard({ loaderData, actionData }: Route.Compo
         </p>
       ) : null}
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 

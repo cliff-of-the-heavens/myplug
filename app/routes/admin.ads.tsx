@@ -1,4 +1,5 @@
 import { and, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { CheckIcon, FileTextIcon, MegaphoneIcon, RotateCcwIcon, SquareIcon, XIcon } from "lucide-react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { AdStateBadge } from "~/components/ad-status";
@@ -301,7 +302,7 @@ export default function AdminAds({ loaderData, actionData }: Route.ComponentProp
         }
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <div className="mb-4">
         <FormError error={actionData && "error" in actionData ? actionData.error : null} />

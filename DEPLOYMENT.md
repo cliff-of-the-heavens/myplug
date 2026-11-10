@@ -45,6 +45,17 @@ Choose **one**:
   in **Admin → System settings → File storage → FTP** (host, port, user, password, folder, and the public web
   address the files are served from, e.g. `https://images.yourdomain.com/myplug`). Use **Test connection**,
   then **Save**. The password is stored encrypted with your `SESSION_SECRET`.
+- **Cloudflare R2** (good long-term choice: no fees for people viewing your images):
+  1. In the Cloudflare dashboard, open **R2** and create two buckets, e.g. `myplug-files` and `myplug-private`.
+     Choose the *Eastern Europe* or *Western Europe* location hint to sit near the app in Frankfurt.
+  2. On `myplug-files` only: **Settings → Custom Domains → Connect**, e.g. `files.myplugstore.com` (the domain's DNS
+     must be on Cloudflare). Don't use the `r2.dev` address for a live site: Cloudflare rate-limits it.
+     Leave `myplug-private` with public access off.
+  3. **R2 → Manage API tokens → Create**: permission *Object Read & Write*, limited to those two buckets. Copy the
+     access key ID and secret access key (the secret is shown once). Note your account ID from the R2 overview page.
+  4. Sign in as admin, open **Admin → System settings → File storage → Cloudflare R2**, fill in those details and the
+     public address (`https://files.myplugstore.com`), press **Test connection**, then **Save**.
+  5. To move existing files over, use **Where your files are → Copy all files to → Cloudflare R2**.
 
 ## 4. Add environment variables
 

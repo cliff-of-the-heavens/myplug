@@ -137,6 +137,14 @@ copy: `pg_dump "$DATABASE_URL" > backup.sql`; restore with `psql "$DATABASE_URL"
   links, so the folder must also be served by a web server. **Test connection** uploads a file, fetches it
   over HTTPS and deletes it. Add a deny-all rule (e.g. `.htaccess`: `Require all denied`) on the private
   sub-folder.
+- **Cloudflare R2** (*File storage → Cloudflare R2*): two buckets, because everything in a public bucket can be
+  downloaded by anyone. The **public bucket** (photos, logos, banners) has public access on through a custom domain
+  such as `https://files.myplugstore.com`. The **private bucket** (IDs, licences, paid files) has no public access;
+  the app serves those files after a permission check, with byte ranges so video and audio can seek. Credentials
+  come from an R2 API token with *Object Read & Write* on both buckets; the secret is stored encrypted with
+  `SESSION_SECRET`. EU-jurisdiction buckets need *Jurisdiction: European Union*. The optional custom endpoint
+  allows another S3-compatible service. Uploads still pass through the app, so the 4 MB limit applies; large digital
+  products still need Blob's direct upload.
 - **Switching storage** only affects new uploads; existing files keep their URLs and keep working.
 - **Tracking:** every file has a row in `stored_files` saying which backend holds it, its path, and the exact
   reference other tables store (a URL, or a private key like `ftp:media/...`).

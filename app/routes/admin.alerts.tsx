@@ -1,4 +1,5 @@
 import { desc, eq, gt, sql } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { BanIcon, EyeIcon, MailWarningIcon, PlayIcon, RotateCcwIcon } from "lucide-react";
 import { Form, Link, useNavigation } from "react-router";
 import { FormError, PageHeader } from "~/components/page";
@@ -120,7 +121,7 @@ export default function AdminAlerts({ loaderData, actionData }: Route.ComponentP
         </p>
       ) : null}
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <div className="mb-4">
         <FormError error={actionData && "error" in actionData ? actionData.error : null} />

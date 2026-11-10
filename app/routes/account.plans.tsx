@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { Notice } from "~/components/notice";
 import { CircleCheckBigIcon, PauseIcon, PlayIcon, RepeatIcon, XIcon } from "lucide-react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { Container, EmptyState, FormError, PageHeader } from "~/components/page";
@@ -91,7 +92,7 @@ export default function Plans({ loaderData, actionData }: Route.ComponentProps) 
         }
       />
       {actionData && "ok" in actionData ? (
-        <p className="mb-4 rounded-lg bg-success/15 px-3 py-2 text-sm font-medium text-success">{actionData.ok}</p>
+        <Notice tone="success" className="mb-4">{actionData.ok}</Notice>
       ) : null}
       <FormError error={actionData && "error" in actionData ? actionData.error : null} />
 
